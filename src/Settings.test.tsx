@@ -31,3 +31,13 @@ it("exports all tasks through a save dialog and reports completion or cancellati
   fireEvent.click(screen.getByRole("button", { name: "导出全部任务 CSV" }));
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("导出失败"));
 });
+
+it("opens annual-card information and preserves unsaved preferences on return", async () => {
+  vi.mocked(api.identity).mockResolvedValue({userId:"local",createdAt:"2026-11-14"});
+  render(<Settings settings={{pet:"ghost",focusId:null,notifications:true,summaryTime:"09:00",quietStart:"23:00",quietEnd:"08:00",reduceMotion:false,showHint:true,theme:"system",petX:null,petY:null}} onClose={() => {}} onChange={() => {}} />);
+  fireEvent.change(screen.getByLabelText("每日汇总时间"), {target:{value:"10:30"}});
+  fireEvent.click(screen.getByRole("button", {name:"年卡与云服务"}));
+  expect(screen.getByRole("heading", {name:"Task Sprite 年卡"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name:"返回设置"}));
+  expect((screen.getByLabelText("每日汇总时间") as HTMLInputElement).value).toBe("10:30");
+});

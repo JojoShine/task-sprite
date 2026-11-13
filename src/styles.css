@@ -1283,3 +1283,61 @@ button:not(:disabled):active { opacity: .75; }
 .task-title-line > .task-title { flex: 1; min-width: 0; }
 .task-delete { display: flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0; flex-shrink: 0; color: var(--muted); }
 .task-delete:not(:disabled):hover { color: var(--red); background: var(--danger-bg); clip-path: var(--pixel-cut); }
+
+/* Optional wardrobe and annual-card information stay inside the existing paper panel. */
+.service-entry { display: flex; align-items: center; gap: 12px; padding: 12px; min-height: 64px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); clip-path: var(--pixel-cut); }
+.service-entry:hover { background: var(--surface-hover); }
+.service-entry > span { flex: 1; min-width: 0; }
+.service-entry strong { display: block; font-size: 15px; font-weight: 600; }
+.service-entry small { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.service-entry > svg { flex-shrink: 0; color: var(--muted); }
+.wardrobe, .membership { display: flex; flex-direction: column; gap: 12px; padding-bottom: 3px; }
+.wardrobe > .section-heading, .membership > .section-heading { margin-bottom: 0; gap: 8px; }
+.wardrobe-intro, .membership-intro { font-size: 13px; line-height: 20px; color: var(--muted); }
+.wardrobe-tabs { display: flex; gap: 8px; }
+.wardrobe-tabs > button { display: flex; align-items: center; justify-content: center; gap: 5px; flex: 1; padding: 8px; font-size: 14px; line-height: 18px; background: var(--surface); border: 1px solid transparent; clip-path: var(--pixel-cut); }
+.wardrobe-tabs > button[aria-pressed="true"] { background: var(--surface-strong); border-color: var(--border); }
+.look-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.look-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 120px; padding: 6px; min-width: 0; background: var(--surface); border: 2px solid transparent; clip-path: var(--pixel-cut); }
+.look-tile:hover { background: var(--surface-hover); border-color: var(--line); }
+.look-tile.selected { border-color: var(--border); background: var(--surface-strong); }
+.look-tile > strong { font-size: 15px; line-height: 20px; font-weight: 500; }
+.look-tile > small { font-size: 12px; line-height: 17px; color: var(--muted); }
+.look-check { position: absolute; top: 8px; right: 8px; color: var(--muted); }
+.look-preview { display: flex; align-items: center; justify-content: center; width: 80px; height: 64px; flex-shrink: 0; }
+.look-preview img { width: 58px; height: 58px; image-rendering: pixelated; }
+.look-preview .sprite { width: 70px; height: 82px; }
+.look-tint { display: flex; align-items: center; justify-content: center; }
+.look-pager { margin-top: 0; }
+.wardrobe-note { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; line-height: 18px; color: var(--muted); }
+.wardrobe-note > button { flex-shrink: 0; font-size: 12px; }
+.membership-eyebrow { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); line-height: 18px; }
+.membership-eyebrow > svg { color: var(--gold); }
+.membership-line { font-size: 23px; line-height: 31px; font-weight: 600; letter-spacing: -.5px; }
+.membership-selection { display: flex; align-items: center; gap: 10px; background: var(--surface); padding: 6px 10px; clip-path: var(--pixel-cut); }
+.membership-selection strong { display: block; font-size: 18px; line-height: 26px; font-weight: 500; }
+.membership-selection span:not(.look-preview):not(.sprite):not(.look-tint) { display: flex; align-items: center; gap: 4px; font-size: 12px; line-height: 20px; color: var(--muted); }
+.membership-facts { display: flex; justify-content: space-between; gap: 6px; padding: 10px 0; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); font-size: 12px; line-height: 18px; color: var(--muted); }
+.membership-benefits { list-style: none; margin: 0; padding: 0; }
+.membership-benefits > li { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.membership-benefits > li > svg { flex-shrink: 0; margin-top: 1px; color: var(--muted); }
+.membership-benefits h3 { font-size: 15px; line-height: 22px; letter-spacing: 0; }
+.membership-benefits p { margin-top: 3px; font-size: 13px; line-height: 19px; color: var(--muted); }
+.membership-checkout > button { width: 100%; min-height: 42px; }
+.membership-checkout > button:disabled { cursor: default; opacity: .55; }
+.membership-checkout > p, .membership-free { font-size: 12px; line-height: 18px; color: var(--muted); }
+.membership-checkout > p { margin-top: 8px; text-align: center; }
+.membership-free { border-top: 1px dashed var(--line); padding-top: 10px; }
+@media (max-height: 560px) {
+  .wardrobe { gap: 6px; }
+  .wardrobe-tabs > button { padding: 6px; }
+  .look-grid { gap: 8px; }
+  .look-tile { height: 96px; }
+  .look-tile .look-preview { height: 48px; }
+  .look-tile .look-preview img { width: 46px; height: 46px; }
+  .look-tile .look-preview .sprite { width: 60px; height: 70px; }
+  .wardrobe .look-pager { min-height: 28px; }
+}
+
+.window-actions .annual-entry { display: flex; align-items: center; justify-content: center; gap: 5px; width: 66px; font-size: 14px; background: var(--surface); clip-path: var(--pixel-cut); }
+.window-actions .annual-entry:hover { background: var(--surface-hover); }

@@ -160,3 +160,22 @@ it("keeps a task visible and shows an error if deleting fails", async () => {
   expect(changed).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: task.title })).toBeTruthy();
 });
+
+it("opens the wardrobe from the companion dock and returns to the task list", () => {
+  render(<TaskPanel snapshot={snapshot} onSnapshot={() => {}} />);
+  fireEvent.click(screen.getByRole("button", {name:"更多装扮"}));
+  expect(screen.getByRole("heading", {name:"精灵衣橱"})).toBeTruthy();
+  expect(screen.queryByRole("button", {name:"试试动作"})).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name:"返回任务"}));
+  expect(screen.getByRole("button", {name:"记下第一件事"})).toBeTruthy();
+});
+
+it("opens annual-card information directly from home and keeps the entry out of unsaved task editing", () => {
+  render(<TaskPanel snapshot={snapshot} onSnapshot={() => {}} />);
+  fireEvent.click(screen.getByRole("button", {name:"年卡与云服务"}));
+  expect(screen.getByRole("heading", {name:"Task Sprite 年卡"})).toBeTruthy();
+  expect((screen.getByRole("button", {name:"购买暂未开放"}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", {name:"返回任务"}));
+  fireEvent.click(screen.getByRole("button", {name:"记下第一件事"}));
+  expect(screen.queryByRole("button", {name:"年卡与云服务"})).toBeNull();
+});

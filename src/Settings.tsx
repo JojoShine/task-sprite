@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Copy, Fingerprint, ArrowLeft, Desktop, Sun, Moon, DownloadSimple } from "@phosphor-icons/react";
+import { Copy, Fingerprint, ArrowLeft, Desktop, Sun, Moon, DownloadSimple, Crown, CaretRight } from "@phosphor-icons/react";
 import type { Theme, LocalIdentity, Settings as Preferences, Snapshot } from "./types";
+import { Membership } from "./Membership";
 import { api, message } from "./api";
 export function Settings({
   settings,
@@ -12,6 +13,7 @@ export function Settings({
   onChange: (next: Snapshot) => void;
 }) {
   const [draft, setDraft] = useState(settings);
+  const [showMembership, setShowMembership] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -71,6 +73,7 @@ export function Settings({
       setBusy(false);
     }
   }
+  if (showMembership) return <Membership backLabel="返回设置" onClose={() => setShowMembership(false)} />;
   return (
     <div className="settings">
       <div className="section-heading">
@@ -89,6 +92,7 @@ export function Settings({
           ))}
         </div>
       </fieldset>
+      <button type="button" className="service-entry" aria-label="年卡与云服务" onClick={() => setShowMembership(true)}><Crown size={22} /><span><strong>年卡与云服务</strong><small>免费本地版 · 了解年卡规划</small></span><CaretRight size={17} /></button>
       <section className="identity-card" aria-label="本机身份">
         <div className="identity-heading"><Fingerprint size={20} /><strong>本机身份</strong><span>尚未绑定微信</span></div>
         <p>本地用户编号</p>

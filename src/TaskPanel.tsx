@@ -1,5 +1,7 @@
 import {
   Trash,
+  Palette,
+  Crown,
   GearSix,
   Minus,
   Plus,
@@ -19,6 +21,8 @@ import { deadlineLabel, isTaskOverdue } from "./deadlines";
 import { Sprite, pets } from "./Pet";
 import { TaskEditor } from "./TaskEditor";
 import { Settings } from "./Settings";
+import { Wardrobe } from "./Wardrobe";
+import { Membership } from "./Membership";
 export function TaskPanel({
   snapshot,
   onSnapshot,
@@ -51,7 +55,7 @@ export function TaskPanel({
       setError(message(e));
     }
   }
-  const [view, setView] = useState<"tasks" | "settings" | "editor">("tasks");
+  const [view, setView] = useState<"tasks" | "settings" | "editor" | "wardrobe" | "membership">("tasks");
   const [editing, setEditing] = useState<Task>();
   const [completed, setCompleted] = useState(false);
   const taskPage = useRef<HTMLDivElement>(null);
@@ -235,6 +239,7 @@ export function TaskPanel({
             <div><b>Task Sprite</b><small>你的桌面任务伙伴</small></div>
           </div>
           <div className="window-actions">
+            {view === "tasks" && <button className="annual-entry" aria-label="年卡与云服务" onClick={() => setView("membership")}><Crown size={17} /><span>年卡</span></button>}
             <button
               aria-label="设置"
               onClick={() => {
@@ -249,7 +254,7 @@ export function TaskPanel({
           </div>
         </header>
         <div className={`panel-content ${view === "tasks" && (completed ? snapshot.tasks.every(task => task.status !== "completed") : todos.length === 0) ? "empty-view" : view === "tasks" ? "paged-view" : ""} ${notificationWarning ? "has-notice" : ""}`}>
-          {view === "editor" ? (
+          {view === "membership" ? <Membership backLabel="返回任务" onClose={() => setView("tasks")} /> : view === "wardrobe" ? <Wardrobe settings={snapshot.settings} onChange={onSnapshot} onClose={() => setView("tasks")} /> : view === "editor" ? (
             <TaskEditor
               key={editing?.id ?? "new"}
               task={editing}
@@ -372,9 +377,10 @@ export function TaskPanel({
             </div>
           )}
         </div>
-        <footer className="companions">
+        {view !== "wardrobe" && view !== "membership" && <footer className="companions">
           <div className="footer-label">
             <span>今天，谁陪你？</span>
+            {view === "tasks" && <button className="text-button icon-text" onClick={() => setView("wardrobe")}><Palette size={15} />更多装扮</button>}
             <button
               className="text-button icon-text"
               aria-label="试试动作"
@@ -439,7 +445,7 @@ export function TaskPanel({
               {previewStatus} · 5秒后恢复
             </p>
           )}
-        </footer>
+        </footer>}
       </div>
     </div>
   );
