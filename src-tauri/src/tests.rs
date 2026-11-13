@@ -310,7 +310,7 @@ fn menu_panel_uses_one_logical_coordinate_space_across_displays() {
         },
     );
     assert!(r.x >= 1440.);
-    assert_eq!(r.x + r.w, 2720. - 32.);
+    assert_eq!(r.x + r.w, 2720.);
     assert_eq!(r.y, 30.);
     // A display above the primary has a negative top-left y.
     let above = cocoa_menu_position(
@@ -458,29 +458,16 @@ fn empty_csv_still_contains_all_column_headers() {
 }
 
 
-#[test]
-fn desktop_windows_leave_a_right_screen_gutter() {
-    use crate::windows::{right_inset, clamp, panel_position, Rect};
-    for (width, height) in [(1024.,600.), (1440.,900.), (2560.,1440.)] {
-        let screen = Rect { x: -100., y: 24., w: width, h: height - 72. };
-        let area = right_inset(screen);
-        let pet = clamp(Rect { x: screen.x + width, y: 500., w: 300., h: 230. }, area);
-        let panel = panel_position(pet, area);
-        assert!(pet.x + pet.w <= screen.x + screen.w - 32.);
-        assert!(panel.x + panel.w <= screen.x + screen.w - 32.);
-    }
-}
-
 
 #[test]
 fn panel_placement_avoids_the_character_at_edges_corners_and_screen_center() {
-    use crate::windows::{panel_layout, right_inset, Rect};
+    use crate::windows::{panel_layout, Rect};
     for (width, height, offset_x, offset_y) in [
         (800., 1000., 0., 24.), (1024., 600., 0., 24.), (1280., 720., 0., 24.),
         (1366., 768., 0., 24.), (1440., 900., 0., 24.),
         (1920., 1080., -1920., 24.), (2560., 1440., 0., -1440.),
     ] {
-        let area = right_inset(Rect { x: offset_x, y: offset_y, w: width, h: height - 72. });
+        let area = Rect { x: offset_x, y: offset_y, w: width, h: height - 72. };
         for x in [area.x, area.x + (area.w - 300.) / 2., area.x + area.w - 300.] {
             for y in [area.y, area.y + (area.h - 230.) / 2., area.y + area.h - 230.] {
                 let original = Rect { x, y, w: 300., h: 230. };
@@ -501,8 +488,8 @@ fn panel_placement_avoids_the_character_at_edges_corners_and_screen_center() {
 }
 #[test]
 fn top_corner_panels_use_the_free_side_without_moving_the_pet() {
-    use crate::windows::{panel_layout, right_inset, Rect};
-    let area = right_inset(Rect { x: 0., y: 24., w: 1440., h: 828. });
+    use crate::windows::{panel_layout, Rect};
+    let area = Rect { x: 0., y: 24., w: 1440., h: 828. };
     let left = Rect { x: 0., y: 24., w: 300., h: 230. };
     let (pet, panel) = panel_layout(left, area);
     assert_eq!(pet.x, left.x);

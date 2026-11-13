@@ -159,7 +159,6 @@ fn monitor_rect(app: &tauri::AppHandle, p: windows::Rect) -> Result<windows::Rec
         })
         .or(rects.first())
         .copied()
-        .map(windows::right_inset)
         .ok_or("无法获取屏幕区域".into())
 }
 fn pet_rect(app: &tauri::AppHandle) -> Result<windows::Rect> {
@@ -260,12 +259,12 @@ fn show_panel_from_tray(
                 w: 440.,
                 h: 620.,
             },
-            windows::right_inset(windows::Rect {
+            windows::Rect {
                 x: area.position.x as f64 / scale,
                 y: area.position.y as f64 / scale,
                 w: area.size.width as f64 / scale,
                 h: area.size.height as f64 / scale,
-            }),
+            },
         )
     };
     if let Ok(pet) = pet_rect(app) {
@@ -397,7 +396,7 @@ fn restore_pet(app: &tauri::AppHandle) -> Result<()> {
     let a = monitor_rect(app, default)?;
     let p = if st.pet_x.is_none() {
         windows::Rect {
-            x: a.x + a.w - 320.,
+            x: a.x + a.w - default.w,
             y: a.y + a.h - 250.,
             ..default
         }
