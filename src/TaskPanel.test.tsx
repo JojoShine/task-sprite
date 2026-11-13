@@ -39,6 +39,7 @@ it("closes a committed new task without risking a duplicate from a failed refres
         priority: "med",
         status: "todo",
         dueDate: null,
+        dueTime: null,
         createdAt: "2026-11-13",
         updatedAt: "2026-11-13",
         completedAt: null,

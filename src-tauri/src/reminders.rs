@@ -6,6 +6,7 @@ pub struct Notice {
     pub task_ids: Vec<String>,
     pub summary_day: Option<String>,
     pub snoozed_ids: Vec<String>,
+    pub deadlines: Vec<(String, String)>,
     pub body: String,
 }
 pub fn is_quiet(now: u32, start: u32, end: u32) -> bool {
@@ -48,11 +49,22 @@ pub fn plan(s: &Store, now: DateTime<FixedOffset>) -> Result<Option<Notice>> {
     let summary_day = if summary_tasks.is_empty() {
         None
     } else {
-        Some(today)
+        Some(today.clone())
     };
+    let mut deadlines = Vec::new();
+    let clock = now.format("%H:%M").to_string();
+    for t in &todos {
+        if let (Some(date), Some(time)) = (&t.due_date, &t.due_time) {
+            let key = format!("{date}T{time}");
+            if date == &today && time <= &clock && !s.deadline_delivered(&t.id, &key)? {
+                deadlines.push((t.id.clone(), key));
+            }
+        }
+    }
     let task_ids: Vec<_> = summary_tasks
         .into_iter()
         .chain(snoozed_ids.iter().cloned())
+        .chain(deadlines.iter().map(|(id, _)| id.clone()))
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
@@ -69,6 +81,7 @@ pub fn plan(s: &Store, now: DateTime<FixedOffset>) -> Result<Option<Notice>> {
         task_ids,
         summary_day,
         snoozed_ids,
+        deadlines,
         body,
     }))
 }

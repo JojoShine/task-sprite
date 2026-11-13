@@ -7,13 +7,14 @@ export interface Task {
   priority: "high" | "med" | "low";
   status: "todo" | "completed";
   dueDate: string | null;
+  dueTime: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
 }
 export type TaskInput = Pick<
   Task,
-  "title" | "description" | "priority" | "status" | "dueDate"
+  "title" | "description" | "priority" | "status" | "dueDate" | "dueTime"
 > & {
   id?: string;
 };
@@ -33,3 +34,5 @@ export interface Snapshot {
   tasks: Task[];
   settings: Settings;
 }
+
+export interface LocalIdentity { userId: string; createdAt: string; }

@@ -1,15 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
-import type { Snapshot, TaskInput, Settings, VisualState } from "./types";
+import type { Snapshot, TaskInput, Settings, VisualState, LocalIdentity } from "./types";
 export const api = {
   preview: (state: VisualState) => emit("preview-animation", state),
   petPosition: () =>
     invoke<[number, number]>("get_pet_position").then(([x, y]) => ({ x, y })),
   movePet: (point: { x: number; y: number }) => invoke<void>("move_pet", point),
   snapshot: () => invoke<Snapshot>("get_snapshot"),
-  save: ({ id, title, description, priority, status, dueDate }: TaskInput) =>
+  identity: () => invoke<LocalIdentity>("get_local_identity"),
+  save: ({ id, title, description, priority, status, dueDate, dueTime }: TaskInput) =>
     invoke<Snapshot>("save_task", {
-      input: { id, title, description, priority, status, dueDate },
+      input: { id, title, description, priority, status, dueDate, dueTime },
     }),
   preferences: (
     patch: Partial<

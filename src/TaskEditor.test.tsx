@@ -1,4 +1,4 @@
-import { it, expect, vi } from "vitest";
+import { it, expect, vi, afterEach } from "vitest";
 import {
   render,
   fireEvent,
@@ -7,6 +7,7 @@ import {
   cleanup,
 } from "@testing-library/react";
 import { TaskEditor } from "./TaskEditor";
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 it("keeps the user draft visible when saving fails", async () => {
   render(
     <TaskEditor
@@ -30,6 +31,8 @@ it("keeps the user draft visible when saving fails", async () => {
 });
 
 it("saves one text field with direct priority selection and a deadline", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 10, 16, 9));
   const onSave = vi.fn(async () => {});
   render(<TaskEditor onSave={onSave} onClose={() => {}} />);
   expect(screen.queryByRole("combobox")).toBeNull();
@@ -37,14 +40,8 @@ it("saves one text field with direct priority selection and a deadline", async (
   fireEvent.change(screen.getByLabelText("任务内容"), {
     target: { value: "整理今天的会议记录\n补齐结论和下一步安排" },
   });
-  const today = new Date();
-  const expectedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-15`;
-  fireEvent.click(screen.getByRole("button", { name: "选择截止日期" }));
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: `${today.getFullYear()}年${today.getMonth() + 1}月15日`,
-    }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "选择截止时间" }));
+  fireEvent.click(screen.getByRole("button", { name: "2026年11月17日 下午" }));
   fireEvent.click(screen.getByRole("radio", { name: "高优先级" }));
   fireEvent.click(screen.getByRole("button", { name: "保存任务" }));
   await waitFor(() =>
@@ -53,7 +50,8 @@ it("saves one text field with direct priority selection and a deadline", async (
         title: "整理今天的会议记录",
         description: "整理今天的会议记录\n补齐结论和下一步安排",
         priority: "high",
-        dueDate: expectedDate,
+        dueDate: "2026-11-17",
+        dueTime: "17:00",
       }),
     ),
   );
@@ -69,6 +67,7 @@ it("retains existing title and description in one editable text field", () => {
         priority: "med",
         status: "todo",
         dueDate: null,
+        dueTime: null,
         createdAt: "2026-11-13",
         updatedAt: "2026-11-13",
         completedAt: null,

@@ -33,3 +33,23 @@ pub fn panel_position(p: Rect, a: Rect) -> Rect {
         a,
     )
 }
+
+#[cfg(any(target_os = "macos", test))]
+pub fn cocoa_menu_position(primary_height: f64, pointer_x: f64, visible: Rect) -> Rect {
+    // AppKit uses global logical points with a bottom-left origin.
+    let area = Rect {
+        x: visible.x,
+        y: primary_height - visible.y - visible.h,
+        w: visible.w,
+        h: visible.h,
+    };
+    clamp(
+        Rect {
+            x: pointer_x - 220.,
+            y: area.y + 8.,
+            w: 440.,
+            h: 620.,
+        },
+        area,
+    )
+}

@@ -14,6 +14,7 @@ import { useState, useRef, useEffect } from "react";
 import type { Snapshot, Task, VisualState } from "./types";
 import { api, message } from "./api";
 import { localDay, daysOverdue, groupTasks, isQuietTime } from "./domain";
+import { deadlineLabel, isTaskOverdue } from "./deadlines";
 import { Sprite, pets } from "./Pet";
 import { TaskEditor } from "./TaskEditor";
 import { Settings } from "./Settings";
@@ -58,7 +59,7 @@ export function TaskPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [snoozing, setSnoozing] = useState<string | null>(null);
   const today = localDay();
-  const groups = groupTasks(snapshot.tasks, today);
+  const groups = groupTasks(snapshot.tasks);
   const todos = Object.values(groups).flat();
   const focus = todos.find((t) => t.id === snapshot.settings.focusId);
   const date = new Date();
@@ -80,7 +81,8 @@ export function TaskPanel({
     setView("editor");
   };
   function row(task: Task) {
-    const overdue = task.dueDate ? daysOverdue(task.dueDate, today) : 0;
+    const overdue = isTaskOverdue(task);
+    const overdueDays = task.dueDate ? daysOverdue(task.dueDate, today) : 0;
     return (
       <div
         className={`task-row ${task.status === "completed" ? "completed" : ""}`}
@@ -126,12 +128,10 @@ export function TaskPanel({
               {task.status === "completed"
                 ? "已完成"
                 : !task.dueDate
-                  ? "未设截止日"
+                  ? "不设截止"
                   : overdue
-                    ? `已逾期${overdue}天`
-                    : task.dueDate === today
-                      ? "今天到期"
-                      : `${Number(task.dueDate.slice(5, 7))}月${Number(task.dueDate.slice(8))}日`}
+                    ? overdueDays ? `已逾期${overdueDays}天` : "已过截止时间"
+                    : deadlineLabel(task.dueDate, task.dueTime)}
             </span>
           </div>
           {task.status === "todo" && (
@@ -197,8 +197,8 @@ export function TaskPanel({
       <div className="paper">
         <header className="topbar">
           <div className="brand">
-            <Sparkle className="brand-mark" size={25} weight="duotone" />
-            <b>Task Sprite</b>
+            <img className="brand-mark" src="/companion-mark.svg" alt="" />
+            <div><b>Task Sprite</b><small>你的桌面任务伙伴</small></div>
           </div>
           <div className="window-actions">
             <button
@@ -403,7 +403,7 @@ export function TaskPanel({
         </div>
         <footer className="companions">
           <div className="footer-label">
-            换个伙伴
+            <span>今天，谁陪你？</span>
             <button
               className="text-button icon-text"
               aria-label="试试动作"

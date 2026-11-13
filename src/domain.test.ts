@@ -11,6 +11,7 @@ const task = (
   title: id,
   description: "",
   dueDate,
+  dueTime: null,
   priority,
   status,
   createdAt: "2026-11-01T00:00:00Z",

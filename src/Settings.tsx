@@ -1,5 +1,6 @@
-import { useState } from "react";
-import type { Settings as Preferences, Snapshot } from "./types";
+import { useEffect, useState } from "react";
+import { Copy, Fingerprint, ArrowLeft } from "@phosphor-icons/react";
+import type { LocalIdentity, Settings as Preferences, Snapshot } from "./types";
 import { api, message } from "./api";
 export function Settings({
   settings,
@@ -14,6 +15,13 @@ export function Settings({
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [identity, setIdentity] = useState<LocalIdentity>();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void api.identity().then(value => { if (active) setIdentity(value); }).catch(e => { if (active) setError(message(e)); });
+    return () => { active = false; };
+  }, []);
   async function save() {
     setBusy(true);
     try {
@@ -37,10 +45,16 @@ export function Settings({
     <div className="settings">
       <div className="section-heading">
         <h2>让陪伴刚刚好</h2>
-        <button className="text-button" onClick={onClose}>
-          返回
+        <button className="text-button icon-text" onClick={onClose}>
+          <ArrowLeft size={16} />返回
         </button>
       </div>
+      <section className="identity-card" aria-label="本机身份">
+        <div className="identity-heading"><Fingerprint size={20} /><strong>本机身份</strong><span>尚未绑定微信</span></div>
+        <p>本地用户编号</p>
+        <div className="identity-value"><code>{identity?.userId ?? "正在读取…"}</code><button type="button" disabled={!identity} aria-label="复制本地用户编号" onClick={async () => { try { await navigator.clipboard.writeText(identity!.userId); setCopied(true); } catch (e) { setError(message(e)); } }}><Copy size={17} />{copied ? "已复制" : "复制"}</button></div>
+        <small>未来可扫码绑定，当前数据仅保存在本机。</small>
+      </section>
       <label className="toggle">
         系统任务提醒
         <input

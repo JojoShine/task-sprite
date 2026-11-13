@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use store::{Result, Snapshot, Store, TaskInput};
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition,
 };
 
@@ -30,6 +30,12 @@ fn get_snapshot(app: tauri::AppHandle) -> Result<Snapshot> {
     let state = locked(&app)?;
     let s = state.0.lock().map_err(|_| "数据库暂不可用")?;
     s.snapshot()
+}
+#[tauri::command]
+fn get_local_identity(app: tauri::AppHandle) -> Result<store::LocalIdentity> {
+    let state = locked(&app)?;
+    let s = state.0.lock().map_err(|_| "数据库暂不可用")?;
+    s.local_identity()
 }
 #[tauri::command]
 fn save_task(app: tauri::AppHandle, input: TaskInput) -> Result<Snapshot> {
@@ -147,6 +153,85 @@ fn place_panel(app: &tauri::AppHandle) -> Result<()> {
 fn show_panel(app: &tauri::AppHandle) -> Result<()> {
     place_panel(app)?;
     if let Some(w) = app.get_webview_window("panel") {
+        w.show().map_err(|e| e.to_string())?;
+        w.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+fn show_panel_from_tray(
+    app: &tauri::AppHandle,
+    _rect: tauri::Rect,
+    _point: PhysicalPosition<f64>,
+) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    let r = {
+        use objc2::MainThreadMarker;
+        use objc2_app_kit::{NSEvent, NSScreen};
+        let mtm = MainThreadMarker::new().ok_or("窗口操作需在主线程执行")?;
+        let screens = NSScreen::screens(mtm);
+        let primary = screens.firstObject().ok_or("无法获取主屏幕")?;
+        let point = NSEvent::mouseLocation();
+        let screen = screens
+            .iter()
+            .find(|screen| {
+                let f = screen.frame();
+                point.x >= f.origin.x
+                    && point.x < f.origin.x + f.size.width
+                    && point.y >= f.origin.y
+                    && point.y < f.origin.y + f.size.height
+            })
+            .ok_or("无法获取菜单栏所在屏幕")?;
+        let f = screen.visibleFrame();
+        windows::cocoa_menu_position(
+            primary.frame().size.height,
+            point.x,
+            windows::Rect {
+                x: f.origin.x,
+                y: f.origin.y,
+                w: f.size.width,
+                h: f.size.height,
+            },
+        )
+    };
+    #[cfg(not(target_os = "macos"))]
+    let r = {
+        let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+        let monitor = monitors
+            .iter()
+            .find(|m| {
+                let p = m.position();
+                let z = m.size();
+                _point.x >= p.x as f64
+                    && _point.x < p.x as f64 + z.width as f64
+                    && _point.y >= p.y as f64
+                    && _point.y < p.y as f64 + z.height as f64
+            })
+            .or(monitors.first())
+            .ok_or("无法获取屏幕区域")?;
+        let scale = monitor.scale_factor();
+        let at = _rect.position.to_logical::<f64>(scale);
+        let size = _rect.size.to_logical::<f64>(scale);
+        let area = monitor.work_area();
+        windows::clamp(
+            windows::Rect {
+                x: at.x + size.width / 2. - 220.,
+                y: at.y + size.height + 8.,
+                w: 440.,
+                h: 620.,
+            },
+            windows::Rect {
+                x: area.position.x as f64 / scale,
+                y: area.position.y as f64 / scale,
+                w: area.size.width as f64 / scale,
+                h: area.size.height as f64 / scale,
+            },
+        )
+    };
+    if let Some(w) = app.get_webview_window("panel") {
+        w.set_size(LogicalSize::new(r.w, r.h))
+            .map_err(|e| e.to_string())?;
+        w.set_position(LogicalPosition::new(r.x, r.y))
+            .map_err(|e| e.to_string())?;
         w.show().map_err(|e| e.to_string())?;
         w.set_focus().map_err(|e| e.to_string())?;
     }
@@ -277,6 +362,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            get_local_identity,
             save_task,
             update_preferences,
             set_focus,
@@ -291,6 +377,8 @@ pub fn run() {
             quit
         ])
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let store = Store::open(&dir.join("tasks.sqlite3")).map_err(std::io::Error::other)?;
@@ -301,9 +389,23 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show, &pet, &quit])?;
             TrayIconBuilder::new()
                 .tooltip("Task Sprite · 桌面任务伙伴")
-                .icon(app.default_window_icon().cloned().unwrap_or_else(|| {
-                    tauri::image::Image::new_owned(vec![95, 112, 57, 255], 1, 1)
-                }))
+                .icon(tauri::image::Image::from_bytes(include_bytes!(
+                    "../icons/tray-template.png"
+                ))?)
+                .icon_as_template(true)
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        rect,
+                        position,
+                        ..
+                    } = event
+                    {
+                        let _ = show_panel_from_tray(tray.app_handle(), rect, position);
+                    }
+                })
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {

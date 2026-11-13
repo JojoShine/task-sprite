@@ -13,6 +13,7 @@ fn input(title: &str, date: Option<&str>) -> TaskInput {
         priority: "med".into(),
         status: "todo".into(),
         due_date: date.map(str::to_owned),
+        due_time: None,
     }
 }
 #[test]
@@ -208,4 +209,119 @@ fn failed_notification_submission_keeps_reminders_pending() {
     assert!(deliver(&mut s, now("2026-11-13 09:01"), |_| Ok(())).unwrap());
     assert!(s.snoozes().unwrap().is_empty());
     assert!(s.delivered("2026-11-13").unwrap());
+}
+
+#[test]
+fn half_day_deadline_is_saved_validated_and_reminded_once() {
+    let mut s = Store::memory().unwrap();
+    let raw = serde_json::json!({"title":"下午交稿","description":"","priority":"med","status":"todo","dueDate":"2026-11-13","dueTime":"17:00"});
+    let i: TaskInput = serde_json::from_value(raw.clone()).unwrap();
+    let task = s.save_task(i).unwrap();
+    assert_eq!(serde_json::to_value(&task).unwrap()["dueTime"], "17:00");
+    let summary = plan(&s, now("2026-11-13 09:00")).unwrap().unwrap();
+    s.record_delivery(&summary).unwrap();
+    assert!(plan(&s, now("2026-11-13 16:59")).unwrap().is_none());
+    assert!(deliver(&mut s, now("2026-11-13 17:00"), |_| Err("failed".into())).is_err());
+    assert!(deliver(&mut s, now("2026-11-13 17:01"), |_| Ok(())).unwrap());
+    assert!(plan(&s, now("2026-11-13 17:02")).unwrap().is_none());
+    for (date, time) in [(Some("2026-11-13"), "13:00"), (None, "12:00")] {
+        let mut bad = raw.clone();
+        bad["dueDate"] = serde_json::json!(date);
+        bad["dueTime"] = serde_json::json!(time);
+        let invalid: TaskInput = serde_json::from_value(bad).unwrap();
+        assert!(s.save_task(invalid).is_err());
+    }
+}
+#[test]
+fn local_identity_survives_reopen_and_differs_between_installations() {
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("identity.db");
+    let s = Store::open(&p).unwrap();
+    let identity: String = s
+        .conn
+        .query_row("SELECT user_id FROM local_identity WHERE id=1", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert!(uuid::Uuid::parse_str(&identity).is_ok());
+    drop(s);
+    let s = Store::open(&p).unwrap();
+    let again: String = s
+        .conn
+        .query_row("SELECT user_id FROM local_identity WHERE id=1", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(identity, again);
+    let other = Store::memory().unwrap();
+    let other_id: String = other
+        .conn
+        .query_row("SELECT user_id FROM local_identity WHERE id=1", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_ne!(identity, other_id);
+}
+#[test]
+fn version_one_migration_preserves_tasks_settings_and_creates_backup() {
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("legacy.db");
+    let conn = rusqlite::Connection::open(&p).unwrap();
+    conn.execute_batch("CREATE TABLE tasks(id TEXT PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL,priority TEXT NOT NULL,status TEXT NOT NULL,due_date TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,completed_at TEXT); CREATE TABLE settings(id INTEGER PRIMARY KEY,payload TEXT NOT NULL); PRAGMA user_version=1;").unwrap();
+    conn.execute("INSERT INTO tasks VALUES('legacy','保留任务','','med','todo','2026-11-12','2026-11-01','2026-11-01',NULL)", []).unwrap();
+    let mut st = Settings::default();
+    st.pet = "ghost".into();
+    conn.execute(
+        "INSERT INTO settings VALUES(1,?1)",
+        [serde_json::to_string(&st).unwrap()],
+    )
+    .unwrap();
+    drop(conn);
+    let s = Store::open(&p).unwrap();
+    assert_eq!(s.snapshot().unwrap().tasks[0].title, "保留任务");
+    assert_eq!(s.snapshot().unwrap().settings.pet, "ghost");
+    assert_eq!(
+        serde_json::to_value(&s.snapshot().unwrap().tasks[0]).unwrap()["dueTime"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        s.conn
+            .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    assert!(std::fs::read_dir(d.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .any(|e| e.file_name().to_string_lossy().contains("backup")));
+}
+
+#[test]
+fn menu_panel_uses_one_logical_coordinate_space_across_displays() {
+    // AppKit points: 1440pt Retina main + 1280pt external at 1x.
+    let r = cocoa_menu_position(
+        900.,
+        2600.,
+        Rect {
+            x: 1440.,
+            y: 0.,
+            w: 1280.,
+            h: 878.,
+        },
+    );
+    assert!(r.x >= 1440.);
+    assert_eq!(r.x + r.w, 2720.);
+    assert_eq!(r.y, 30.);
+    // A display above the primary has a negative top-left y.
+    let above = cocoa_menu_position(
+        900.,
+        600.,
+        Rect {
+            x: 0.,
+            y: 900.,
+            w: 1280.,
+            h: 778.,
+        },
+    );
+    assert_eq!(above.y, -770.);
 }

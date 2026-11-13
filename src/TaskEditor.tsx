@@ -24,6 +24,7 @@ export function TaskEditor({
     task?.priority ?? "med",
   );
   const [date, setDate] = useState(task?.dueDate ?? "");
+  const [dueTime, setDueTime] = useState(task?.dueTime ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   async function submit(e: React.FormEvent) {
@@ -40,6 +41,7 @@ export function TaskEditor({
         description: content === title ? "" : content,
         priority,
         dueDate: date || null,
+        dueTime: date ? dueTime : null,
         status: task?.status ?? "todo",
       });
       onClose();
@@ -78,8 +80,8 @@ export function TaskEditor({
       </label>
       <div className="field-row task-details">
         <div className="date-field">
-          <span className="field-caption">截止日期</span>
-          <DatePicker value={date} onChange={setDate} />
+          <span className="field-caption">截止时间</span>
+          <DatePicker value={date} time={dueTime} onChange={(date, time) => { setDate(date); setDueTime(time); }} />
         </div>
         <fieldset className="priority-field">
           <legend>优先级</legend>

@@ -13,6 +13,8 @@ pub struct Task {
     pub priority: String,
     pub status: String,
     pub due_date: Option<String>,
+    #[serde(default)]
+    pub due_time: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub completed_at: Option<String>,
@@ -26,6 +28,8 @@ pub struct TaskInput {
     pub priority: String,
     pub status: String,
     pub due_date: Option<String>,
+    #[serde(default)]
+    pub due_time: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -62,6 +66,12 @@ pub struct Snapshot {
     pub tasks: Vec<Task>,
     pub settings: Settings,
 }
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalIdentity {
+    pub user_id: String,
+    pub created_at: String,
+}
 pub struct Store {
     pub conn: Connection,
 }
@@ -75,10 +85,10 @@ impl Store {
         let version: i64 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .map_err(err)?;
-        if version > 1 {
+        if version > 2 {
             return Err("数据版本高于当前应用，请使用新版应用打开".into());
         }
-        if version == 0 && existed {
+        if version < 2 && existed {
             let mut backup = Connection::open(
                 path.with_extension(format!("backup-{}.db", Utc::now().timestamp_millis())),
             )
@@ -94,18 +104,49 @@ impl Store {
     pub fn memory() -> Result<Self> {
         Self::initialize(Connection::open_in_memory().map_err(err)?)
     }
-    fn initialize(conn: Connection) -> Result<Self> {
+    fn initialize(mut conn: Connection) -> Result<Self> {
         conn.busy_timeout(Duration::from_secs(3)).map_err(err)?;
-        conn.execute_batch("PRAGMA foreign_keys=ON; BEGIN; CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL,priority TEXT NOT NULL,status TEXT NOT NULL,due_date TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,completed_at TEXT); CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS snoozes(task_id TEXT PRIMARY KEY REFERENCES tasks(id),at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS delivered(day TEXT PRIMARY KEY); PRAGMA user_version=1; COMMIT;").map_err(err)?;
-        conn.execute(
+        conn.execute_batch("PRAGMA foreign_keys=ON;").map_err(err)?;
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .map_err(err)?;
+        let tx = conn.transaction().map_err(err)?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL,priority TEXT NOT NULL,status TEXT NOT NULL,due_date TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,completed_at TEXT); CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS snoozes(task_id TEXT PRIMARY KEY REFERENCES tasks(id),at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS delivered(day TEXT PRIMARY KEY);").map_err(err)?;
+        if version < 2 {
+            tx.execute_batch("ALTER TABLE tasks ADD COLUMN due_time TEXT;")
+                .map_err(err)?;
+        }
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS local_identity(id INTEGER PRIMARY KEY CHECK(id=1),user_id TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS deadline_delivered(task_id TEXT NOT NULL REFERENCES tasks(id),deadline TEXT NOT NULL,PRIMARY KEY(task_id,deadline));").map_err(err)?;
+        tx.execute(
             "INSERT OR IGNORE INTO settings VALUES(1,?1)",
             [serde_json::to_string(&Settings::default()).map_err(err)?],
         )
         .map_err(err)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO local_identity VALUES(1,?1,?2)",
+            params![uuid::Uuid::new_v4().to_string(), Utc::now().to_rfc3339()],
+        )
+        .map_err(err)?;
+        tx.pragma_update(None, "user_version", 2).map_err(err)?;
+        tx.commit().map_err(err)?;
         Ok(Self { conn })
     }
+    pub fn local_identity(&self) -> Result<LocalIdentity> {
+        self.conn
+            .query_row(
+                "SELECT user_id,created_at FROM local_identity WHERE id=1",
+                [],
+                |r| {
+                    Ok(LocalIdentity {
+                        user_id: r.get(0)?,
+                        created_at: r.get(1)?,
+                    })
+                },
+            )
+            .map_err(err)
+    }
     pub fn snapshot(&self) -> Result<Snapshot> {
-        let mut q=self.conn.prepare("SELECT id,title,description,priority,status,due_date,created_at,updated_at,completed_at FROM tasks ORDER BY created_at DESC,id").map_err(err)?;
+        let mut q=self.conn.prepare("SELECT id,title,description,priority,status,due_date,created_at,updated_at,completed_at,due_time FROM tasks ORDER BY created_at DESC,id").map_err(err)?;
         let tasks = q
             .query_map([], |r| {
                 Ok(Task {
@@ -118,6 +159,7 @@ impl Store {
                     created_at: r.get(6)?,
                     updated_at: r.get(7)?,
                     completed_at: r.get(8)?,
+                    due_time: r.get(9)?,
                 })
             })
             .map_err(err)?
@@ -150,6 +192,13 @@ impl Store {
                 return Err("截止日期无效".into());
             }
         }
+        if i.due_time
+            .as_deref()
+            .is_some_and(|t| !["12:00", "17:00"].contains(&t))
+            || (i.due_time.is_some() && i.due_date.is_none())
+        {
+            return Err("请选择上午或下午的截止时间".into());
+        }
         let snapshot = self.snapshot()?;
         let old = if let Some(id) = &i.id {
             Some(
@@ -173,6 +222,7 @@ impl Store {
             priority: i.priority,
             status: i.status.clone(),
             due_date: i.due_date,
+            due_time: i.due_time,
             created_at: old.map(|t| t.created_at.clone()).unwrap_or(now.clone()),
             updated_at: now.clone(),
             completed_at: if i.status == "completed" {
@@ -182,7 +232,7 @@ impl Store {
             },
         };
         let tx = self.conn.transaction().map_err(err)?;
-        tx.execute("INSERT INTO tasks VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,priority=excluded.priority,status=excluded.status,due_date=excluded.due_date,updated_at=excluded.updated_at,completed_at=excluded.completed_at",params![t.id,t.title,t.description,t.priority,t.status,t.due_date,t.created_at,t.updated_at,t.completed_at]).map_err(err)?;
+        tx.execute("INSERT INTO tasks(id,title,description,priority,status,due_date,created_at,updated_at,completed_at,due_time) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,priority=excluded.priority,status=excluded.status,due_date=excluded.due_date,due_time=excluded.due_time,updated_at=excluded.updated_at,completed_at=excluded.completed_at",params![t.id,t.title,t.description,t.priority,t.status,t.due_date,t.created_at,t.updated_at,t.completed_at,t.due_time]).map_err(err)?;
         if t.status == "completed" {
             tx.execute("DELETE FROM snoozes WHERE task_id=?1", [&t.id])
                 .map_err(err)?;
@@ -280,11 +330,27 @@ impl Store {
             )
             .map_err(err)
     }
+    pub fn deadline_delivered(&self, id: &str, deadline: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM deadline_delivered WHERE task_id=?1 AND deadline=?2)",
+                params![id, deadline],
+                |r| r.get(0),
+            )
+            .map_err(err)
+    }
     pub fn record_delivery(&mut self, n: &crate::reminders::Notice) -> Result<()> {
         let tx = self.conn.transaction().map_err(err)?;
         if let Some(day) = &n.summary_day {
             tx.execute("INSERT OR IGNORE INTO delivered VALUES(?1)", [day])
                 .map_err(err)?;
+        }
+        for (id, deadline) in &n.deadlines {
+            tx.execute(
+                "INSERT OR IGNORE INTO deadline_delivered VALUES(?1,?2)",
+                params![id, deadline],
+            )
+            .map_err(err)?;
         }
         for id in &n.snoozed_ids {
             tx.execute("DELETE FROM snoozes WHERE task_id=?1", [id])

@@ -18,6 +18,7 @@ it("sends only editable task fields to the strict native command", async () => {
           "priority",
           "status",
           "dueDate",
+          "dueTime",
         ].includes(k),
     );
     if (extra.length) throw new Error("unknown field " + extra[0]);
@@ -30,6 +31,7 @@ it("sends only editable task fields to the strict native command", async () => {
     priority: "med" as const,
     status: "completed" as const,
     dueDate: null,
+    dueTime: null,
     createdAt: "2026-11-13",
     updatedAt: "2026-11-13",
     completedAt: "2026-11-13",
