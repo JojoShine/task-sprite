@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { Snapshot, VisualState } from "./types";
 import { api, message } from "./api";
+import { useTheme } from "./useTheme";
 import { Pet } from "./Pet";
 import { TaskPanel } from "./TaskPanel";
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
+  useTheme(snapshot?.settings.theme);
   const [error, setError] = useState("");
   const [animation, setAnimation] = useState<VisualState | null>(null);
   const animationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

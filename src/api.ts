@@ -23,6 +23,7 @@ export const api = {
         | "quietEnd"
         | "reduceMotion"
         | "showHint"
+        | "theme"
       >
     >,
   ) => invoke<Snapshot>("update_preferences", { patch }),

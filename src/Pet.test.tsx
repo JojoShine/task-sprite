@@ -15,6 +15,7 @@ const snapshot: Snapshot = {
     quietEnd: "08:00",
     reduceMotion: false,
     showHint: true,
+    theme: "system",
     petX: null,
     petY: null,
   },
@@ -44,4 +45,17 @@ it("responds to a single click and opens tasks only on a double click", () => {
   expect(api.toggle).not.toHaveBeenCalled();
   fireEvent.doubleClick(pet);
   expect(api.toggle).toHaveBeenCalledTimes(1);
+});
+
+it("cycles a task stack without opening the panel and handles task removal", () => {
+  const tasks = ["写报告", "回邮件", "准备会议"].map((title, i) => ({ id: String(i), title, description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null }));
+  const { rerender } = render(<Pet snapshot={{ ...snapshot, tasks }} animation={null} />);
+  expect(screen.getByText(/接下来：写报告/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
+  expect(screen.getByText(/接下来：回邮件/)).toBeTruthy();
+  expect(screen.getByText("2 / 3")).toBeTruthy();
+  expect(api.toggle).not.toHaveBeenCalled();
+  rerender(<Pet snapshot={{ ...snapshot, tasks: [tasks[0]] }} animation={null} />);
+  expect(screen.getByText(/接下来：写报告/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "下一项任务" })).toBeNull();
 });

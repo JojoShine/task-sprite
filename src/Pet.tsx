@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { TaskBubble } from "./TaskBubble";
 import { createDragSession } from "./drag";
 import type { PetId, VisualState, Snapshot } from "./types";
 import { groupTasks, isQuietTime } from "./domain";
@@ -47,7 +48,8 @@ export function Pet({
   const s = snapshot.settings;
   const groups = groupTasks(snapshot.tasks);
   const ordered = Object.values(groups).flat();
-  const focus = ordered.find((t) => t.id === s.focusId) ?? ordered[0];
+  const focus = ordered.find((t) => t.id === s.focusId);
+  const bubbleTasks = focus ? [focus, ...ordered.filter(task => task.id !== focus.id)] : ordered;
   const drag = useRef<ReturnType<typeof createDragSession> | null>(null);
   const [dragError, setDragError] = useState("");
   const quiet = isQuietTime(s.quietStart, s.quietEnd);
@@ -75,21 +77,7 @@ export function Pet({
       }}
     >
       {(s.showHint || motion.caption) && (
-        <button className="speech" onClick={() => void api.toggle()}>
-          <span>
-            {motion.caption ??
-              (animation === "celebrate"
-                ? "给自己一点掌声，继续加油。"
-                : focus
-                  ? `${s.focusId ? "当前专注" : "接下来"}：${focus.title}`
-                  : "今天，有什么想完成的事？")}
-          </span>
-          <small>
-            {groups.overdue.length
-              ? `${groups.overdue.length} 项已逾期`
-              : "点我，记下你的下一步"}
-          </small>
-        </button>
+        <TaskBubble tasks={bubbleTasks} focusId={s.focusId} caption={motion.caption ?? (animation === "celebrate" ? "给自己一点掌声，继续加油。" : null)} onOpen={() => void api.toggle()} />
       )}
       <button
         aria-label="点击互动，双击打开任务面板，拖动可移动精灵"

@@ -214,7 +214,7 @@ export function TaskPanel({
             </button>
           </div>
         </header>
-        <div className="panel-content">
+        <div className={`panel-content ${view === "tasks" && (completed ? snapshot.tasks.every(task => task.status !== "completed") : todos.length === 0) ? "empty-view" : ""} ${notificationWarning ? "has-notice" : ""}`}>
           {view === "editor" ? (
             <TaskEditor
               key={editing?.id ?? "new"}
@@ -231,7 +231,7 @@ export function TaskPanel({
               onChange={onSnapshot}
             />
           ) : (
-            <>
+            <div className="task-home">
               <div className="date-line">
                 {dayText}
                 <span className="local-badge">
@@ -398,7 +398,7 @@ export function TaskPanel({
                   {error}
                 </p>
               )}
-            </>
+            </div>
           )}
         </div>
         <footer className="companions">

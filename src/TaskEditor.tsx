@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { ArrowLeft, Check } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Check, CalendarBlank, CaretRight } from "@phosphor-icons/react";
 import type { Task, TaskInput } from "./types";
 import { message } from "./api";
+import { deadlineLabel } from "./deadlines";
 import { DatePicker } from "./DatePicker";
 export function TaskEditor({
   task,
@@ -27,6 +28,13 @@ export function TaskEditor({
   const [dueTime, setDueTime] = useState(task?.dueTime ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [choosingDate, setChoosingDate] = useState(false);
+  const dateButton = useRef<HTMLButtonElement>(null);
+  const wasChoosing = useRef(false);
+  useEffect(() => {
+    if (!choosingDate && wasChoosing.current) dateButton.current?.focus();
+    wasChoosing.current = choosingDate;
+  }, [choosingDate]);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const content = text.trim();
@@ -51,6 +59,11 @@ export function TaskEditor({
       setSaving(false);
     }
   }
+  if (choosingDate) return (
+    <DatePicker value={date} time={dueTime}
+      onClose={() => setChoosingDate(false)}
+      onChange={(date, time) => { setDate(date); setDueTime(time); setChoosingDate(false); }} />
+  );
   return (
     <form className="editor" onSubmit={submit}>
       <div className="section-heading">
@@ -81,7 +94,9 @@ export function TaskEditor({
       <div className="field-row task-details">
         <div className="date-field">
           <span className="field-caption">截止时间</span>
-          <DatePicker value={date} time={dueTime} onChange={(date, time) => { setDate(date); setDueTime(time); }} />
+          <button type="button" ref={dateButton} className={`date-trigger ${date ? "has-date" : ""}`} aria-label={date ? `截止时间：${deadlineLabel(date, dueTime)}` : "选择截止时间"} onClick={() => setChoosingDate(true)}>
+            <CalendarBlank size={18} /><span>{date ? deadlineLabel(date, dueTime) : "安排到周几"}</span><CaretRight size={14} />
+          </button>
         </div>
         <fieldset className="priority-field">
           <legend>优先级</legend>

@@ -41,7 +41,8 @@ it("saves one text field with direct priority selection and a deadline", async (
     target: { value: "整理今天的会议记录\n补齐结论和下一步安排" },
   });
   fireEvent.click(screen.getByRole("button", { name: "选择截止时间" }));
-  fireEvent.click(screen.getByRole("button", { name: "2026年11月17日 下午" }));
+  fireEvent.click(screen.getByRole("button", { name: "2026年11月17日" }));
+  fireEvent.click(screen.getByRole("button", { name: "下午 17:00 截止" }));
   fireEvent.click(screen.getByRole("radio", { name: "高优先级" }));
   fireEvent.click(screen.getByRole("button", { name: "保存任务" }));
   await waitFor(() =>
@@ -80,4 +81,16 @@ it("retains existing title and description in one editable text field", () => {
     "原来的标题\n\n原来的补充说明",
   );
   cleanup();
+});
+
+it("replaces the form while choosing time and restores an unsaved draft on cancellation", () => {
+  render(<TaskEditor onSave={async () => {}} onClose={() => {}} />);
+  fireEvent.change(screen.getByLabelText("任务内容"), { target: { value: "不能丢失这段话" } });
+  fireEvent.click(screen.getByRole("radio", { name: "高优先级" }));
+  fireEvent.click(screen.getByRole("button", { name: "选择截止时间" }));
+  expect(screen.queryByRole("textbox")).toBeNull();
+  expect(screen.queryByRole("button", { name: "保存任务" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "返回任务编辑" }));
+  expect((screen.getByLabelText("任务内容") as HTMLTextAreaElement).value).toBe("不能丢失这段话");
+  expect(screen.getByRole("radio", { name: "高优先级" }).getAttribute("aria-checked")).toBe("true");
 });

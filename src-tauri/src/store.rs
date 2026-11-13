@@ -42,8 +42,13 @@ pub struct Settings {
     pub quiet_end: String,
     pub reduce_motion: bool,
     pub show_hint: bool,
+    #[serde(default = "default_theme")]
+    pub theme: String,
     pub pet_x: Option<f64>,
     pub pet_y: Option<f64>,
+}
+fn default_theme() -> String {
+    "system".into()
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -56,6 +61,7 @@ impl Default for Settings {
             quiet_end: "08:00".into(),
             reduce_motion: false,
             show_hint: true,
+            theme: default_theme(),
             pet_x: None,
             pet_y: None,
         }
@@ -250,6 +256,9 @@ impl Store {
         Ok(t)
     }
     pub fn set_settings(&mut self, s: Settings) -> Result<()> {
+        if !["system", "light", "dark"].contains(&s.theme.as_str()) {
+            return Err("请选择跟随系统、浅色或深色主题".into());
+        }
         if !["cat", "shiba", "robot", "ghost"].contains(&s.pet.as_str()) {
             return Err("请选择内置伙伴".into());
         }

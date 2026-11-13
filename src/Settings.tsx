@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Copy, Fingerprint, ArrowLeft } from "@phosphor-icons/react";
-import type { LocalIdentity, Settings as Preferences, Snapshot } from "./types";
+import { Copy, Fingerprint, ArrowLeft, Desktop, Sun, Moon } from "@phosphor-icons/react";
+import type { Theme, LocalIdentity, Settings as Preferences, Snapshot } from "./types";
 import { api, message } from "./api";
 export function Settings({
   settings,
@@ -16,12 +16,26 @@ export function Settings({
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [identity, setIdentity] = useState<LocalIdentity>();
+  const [themeBusy, setThemeBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     let active = true;
     void api.identity().then(value => { if (active) setIdentity(value); }).catch(e => { if (active) setError(message(e)); });
     return () => { active = false; };
   }, []);
+  async function changeTheme(theme: Theme) {
+    setThemeBusy(true);
+    setError("");
+    try {
+      const next = await api.preferences({ theme });
+      setDraft(current => ({ ...current, theme }));
+      onChange(next);
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setThemeBusy(false);
+    }
+  }
   async function save() {
     setBusy(true);
     try {
@@ -49,6 +63,16 @@ export function Settings({
           <ArrowLeft size={16} />返回
         </button>
       </div>
+      <fieldset className="theme-field">
+        <legend>外观</legend>
+        <div role="radiogroup" aria-label="外观主题" className="theme-options">
+          {([{ value: "system", label: "跟随系统", Icon: Desktop }, { value: "light", label: "浅色", Icon: Sun }, { value: "dark", label: "深色", Icon: Moon }] as const).map(({ value, label, Icon }) => (
+            <button key={value} type="button" role="radio" aria-checked={draft.theme === value} disabled={themeBusy} onClick={() => void changeTheme(value)}>
+              <Icon size={19} /><span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
       <section className="identity-card" aria-label="本机身份">
         <div className="identity-heading"><Fingerprint size={20} /><strong>本机身份</strong><span>尚未绑定微信</span></div>
         <p>本地用户编号</p>

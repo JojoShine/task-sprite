@@ -1,4 +1,5 @@
 export type PetId = "cat" | "shiba" | "robot" | "ghost";
+export type Theme = "system" | "light" | "dark";
 export type VisualState = "idle" | "reminder" | "celebrate" | "rest";
 export interface Task {
   id: string;
@@ -27,6 +28,7 @@ export interface Settings {
   quietEnd: string;
   reduceMotion: boolean;
   showHint: boolean;
+  theme: Theme;
   petX: number | null;
   petY: number | null;
 }

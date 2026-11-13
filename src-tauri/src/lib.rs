@@ -57,6 +57,7 @@ struct Preferences {
     quiet_end: Option<String>,
     reduce_motion: Option<bool>,
     show_hint: Option<bool>,
+    theme: Option<String>,
 }
 #[tauri::command]
 fn update_preferences(app: tauri::AppHandle, patch: Preferences) -> Result<Snapshot> {
@@ -83,6 +84,9 @@ fn update_preferences(app: tauri::AppHandle, patch: Preferences) -> Result<Snaps
     }
     if let Some(v) = patch.show_hint {
         st.show_hint = v
+    }
+    if let Some(v) = patch.theme {
+        st.theme = v;
     }
     s.set_settings(st)?;
     broadcast(&app, &s)

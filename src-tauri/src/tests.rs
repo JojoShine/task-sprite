@@ -325,3 +325,39 @@ fn menu_panel_uses_one_logical_coordinate_space_across_displays() {
     );
     assert_eq!(above.y, -770.);
 }
+
+#[test]
+fn theme_defaults_for_legacy_settings_and_persists_with_validation() {
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("theme.db");
+    let mut s = Store::open(&p).unwrap();
+    let mut legacy = serde_json::to_value(Settings::default()).unwrap();
+    legacy.as_object_mut().unwrap().remove("theme");
+    s.conn
+        .execute(
+            "UPDATE settings SET payload=?1 WHERE id=1",
+            [legacy.to_string()],
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(s.snapshot().unwrap().settings).unwrap()["theme"],
+        "system"
+    );
+    let mut raw = serde_json::to_value(s.snapshot().unwrap().settings).unwrap();
+    raw["theme"] = serde_json::json!("dark");
+    let dark: Settings = serde_json::from_value(raw.clone()).unwrap();
+    s.set_settings(dark).unwrap();
+    drop(s);
+    let mut s = Store::open(&p).unwrap();
+    assert_eq!(
+        serde_json::to_value(s.snapshot().unwrap().settings).unwrap()["theme"],
+        "dark"
+    );
+    raw["theme"] = serde_json::json!("unknown");
+    let invalid: Settings = serde_json::from_value(raw).unwrap();
+    assert!(s.set_settings(invalid).is_err());
+    assert_eq!(
+        serde_json::to_value(s.snapshot().unwrap().settings).unwrap()["theme"],
+        "dark"
+    );
+}

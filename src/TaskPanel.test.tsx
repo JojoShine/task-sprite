@@ -24,6 +24,7 @@ const snapshot: Snapshot = {
     quietEnd: "08:00",
     reduceMotion: false,
     showHint: true,
+    theme: "system",
     petX: null,
     petY: null,
   },
