@@ -164,7 +164,8 @@ export function TaskPanel({
           {task.status === "todo" && (
             <div className="task-actions">
               {snoozing !== task.id && <><button
-                aria-label={`专注 ${task.title}`}
+                aria-label={`${snapshot.settings.focusId === task.id ? "取消当前" : "设为当前"} ${task.title}`}
+                title={snapshot.settings.focusId === task.id ? "取消当前任务标记" : "标记为正在做的任务；无逾期任务时桌宠优先展示，不启动计时"}
                 disabled={busy === task.id}
                 onClick={() =>
                   void act(task.id, () =>
@@ -181,17 +182,18 @@ export function TaskPanel({
                   }
                 />
                 {snapshot.settings.focusId === task.id
-                  ? "当前"
-                  : "专注"}
+                  ? "取消当前"
+                  : "设为当前"}
               </button>
               <button
                 aria-label={`稍后提醒 ${task.title}`}
+                title="选择30分钟或2小时后再提醒；不改变截止时间，遵守通知和免打扰设置"
                 onClick={() =>
                   setSnoozing(snoozing === task.id ? null : task.id)
                 }
               >
                 <Clock size={14} />
-                稍后
+                稍后提醒
               </button></>}
               {snoozing === task.id && (
                 <span className="snooze-options">
@@ -209,7 +211,7 @@ export function TaskPanel({
                         })
                       }
                     >
-                      {m === 30 ? "30分" : "2时"}
+                      {m === 30 ? "30分钟后" : "2小时后"}
                     </button>
                   ))}
                   <button aria-label="取消稍后提醒选择" onClick={() => setSnoozing(null)}><X size={13} /></button>

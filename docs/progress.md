@@ -84,3 +84,6 @@ Verification:39 frontend tests pass; TypeScript/Vite and signed macOS bundle suc
 
 ## Matching overdue bubble arrows 2026-11-13
 Extended the existing overdue red rule to both bubble navigation buttons; reminder text, page count, frame and arrows now share the same token. No behavior changes. Verified TypeScript/Vite and signed macOS build, delivery signature and native screenshot of both red arrows; app restarted with original tasks and preferences. Explained current focus selection and30/120-minute reminder behavior to the user without changing either flow.
+
+## Clear task action wording 2026-11-13
+Replaced visible focus wording with设为当前/取消当前 and稍后 with稍后提醒. Tooltips explain focus priority/no timer and reminder timing/deadline/notification/quiet settings. Interval choices now read30分钟后/2小时后. Behavior and records unchanged.39 frontend tests and signed production macOS build pass; release signature verified. Browser geometry at440×620 and420×500 confirmed metadata is not clipped and both normal/interval actions remain inside cards. Native restarted app confirms explicit labels and accessible help; original tasks and preferences preserved. Preview closed, viewport reset and dev server stopped.
