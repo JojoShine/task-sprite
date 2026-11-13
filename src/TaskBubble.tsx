@@ -25,7 +25,7 @@ export function TaskBubble({ tasks, focusId, caption, onOpen }: {
       {count > 1 && <span className="bubble-back back-one" aria-hidden="true" />}
       <div className={`speech ${task ? "has-task" : ""} ${count > 1 ? "has-pages" : ""} ${overdue ? "is-overdue" : ""}`}>
         <button className="speech-content" title={task?.title} onClick={onOpen}>
-          <span aria-live="polite">{caption ?? (task ? `${overdue ? "逾期提醒" : task.id === focusId ? "正在做" : "接下来"}：${task.title}` : "今天，有什么想完成的事？")}</span>
+          <span aria-live="polite">{(overdue ? null : caption) ?? (task ? `${overdue ? "逾期提醒" : task.id === focusId ? "正在做" : "接下来"}：${task.title}` : "今天，有什么想完成的事？")}</span>
           <small>{task ? `${priority} · ${overdue ? overdueDays ? `已逾期${overdueDays}天` : "已过截止时间" : task.dueDate ? deadlineLabel(task.dueDate, task.dueTime) : "随时开始"}` : "点我，记下你的下一步"}</small>
         </button>
         {count > 1 && <div className="bubble-pager">

@@ -113,7 +113,7 @@ export function App() {
       </div>
     );
   return pet ? (
-    <Pet snapshot={snapshot} animation={animation} />
+    <Pet snapshot={snapshot} animation={animation} onSnapshot={setSnapshot} />
   ) : (
     <TaskPanel
       snapshot={snapshot}

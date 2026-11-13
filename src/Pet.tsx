@@ -1,10 +1,10 @@
 import { useState, useRef } from "react";
-import { Star } from "@phosphor-icons/react";
+import { Check, Star } from "@phosphor-icons/react";
 import { TaskBubble } from "./TaskBubble";
 import { createDragSession } from "./drag";
 import type { PetId, VisualState, Snapshot } from "./types";
 import { groupTasks, isQuietTime } from "./domain";
-import { api } from "./api";
+import { api, message } from "./api";
 import { usePetMotion, type PetActivity } from "./usePetMotion";
 export const pets: {
   id: PetId;
@@ -42,9 +42,11 @@ export function Sprite({
 export function Pet({
   snapshot,
   animation,
+  onSnapshot,
 }: {
   snapshot: Snapshot;
   animation: VisualState | null;
+  onSnapshot: (next: Snapshot) => void;
 }) {
   const s = snapshot.settings;
   const groups = groupTasks(snapshot.tasks);
@@ -53,6 +55,23 @@ export function Pet({
   const bubbleTasks = focus && groups.overdue.length === 0 ? [focus, ...ordered.filter(task => task.id !== focus.id)] : ordered;
   const drag = useRef<ReturnType<typeof createDragSession> | null>(null);
   const [dragError, setDragError] = useState("");
+  const completing = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [completionError, setCompletionError] = useState<{ id: string; text: string } | null>(null);
+  async function completeCurrent() {
+    if (!focus || completing.current) return;
+    completing.current = true;
+    setSaving(true);
+    setCompletionError(null);
+    try {
+      onSnapshot(await api.save({ ...focus, status: "completed" }));
+    } catch (e) {
+      setCompletionError({ id: focus.id, text: message(e) });
+    } finally {
+      completing.current = false;
+      setSaving(false);
+    }
+  }
   const quiet = isQuietTime(s.quietStart, s.quietEnd);
   const motion = usePetMotion({
     blocked: Boolean(animation) || quiet,
@@ -78,15 +97,30 @@ export function Pet({
       }}
     >
       {focus && (
-        <button
-          className="pet-current"
-          aria-label={`正在做：${focus.title}`}
-          title={`正在做：${focus.title}`}
-          onClick={() => void api.toggle()}
-        >
-          <span className="pet-current-label"><Star size={13} weight="fill" />正在做</span>
-          <span className="pet-current-title" aria-live="polite">{focus.title}</span>
-        </button>
+        <div className="pet-current">
+          <button
+            className="pet-current-open"
+            aria-label={`正在做：${focus.title}`}
+            title={`正在做：${focus.title}`}
+            onClick={() => void api.toggle()}
+          >
+            <span className="pet-current-label"><Star size={13} weight="fill" />正在做</span>
+            <span className="pet-current-title" aria-live="polite">{focus.title}</span>
+          </button>
+          <button
+            className="pet-current-complete"
+            aria-label={`完成当前任务：${focus.title}`}
+            title="标记完成，逾期提醒继续保留"
+            disabled={saving}
+            onClick={() => void completeCurrent()}
+          >
+            {!saving && <Check size={13} weight="bold" />}
+            {saving ? "保存中" : "完成"}
+          </button>
+        </div>
+      )}
+      {focus && completionError?.id === focus.id && (
+        <span className="pet-completion-error" role="alert" title={completionError.text}>完成失败，请重试</span>
       )}
       {(s.showHint || motion.caption) && (
         <TaskBubble tasks={bubbleTasks} focusId={s.focusId} caption={motion.caption ?? (animation === "celebrate" ? "给自己一点掌声，继续加油。" : null)} onOpen={() => void api.toggle()} />
