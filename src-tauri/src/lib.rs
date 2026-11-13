@@ -172,15 +172,43 @@ fn pet_rect(app: &tauri::AppHandle) -> Result<windows::Rect> {
         h: 230.,
     })
 }
+#[cfg(target_os = "macos")]
+fn menu_panel_position(app: &tauri::AppHandle) -> Result<windows::Rect> {
+    let tray = app.tray_by_id("main").ok_or("菜单栏图标不可用")?;
+    tray.with_inner_tray_icon(|tray| -> Result<windows::Rect> {
+        use objc2::MainThreadMarker;
+        use objc2_app_kit::NSScreen;
+        let mtm = MainThreadMarker::new().ok_or("窗口操作需在主线程执行")?;
+        let status = tray.ns_status_item().ok_or("菜单栏图标不可用")?;
+        let button = status.button(mtm).ok_or("菜单栏图标不可用")?;
+        let window = button.window().ok_or("无法获取菜单栏位置")?;
+        let screen = window.screen().ok_or("无法获取菜单栏所在屏幕")?;
+        let screens = NSScreen::screens(mtm);
+        let primary = screens.firstObject().ok_or("无法获取主屏幕")?;
+        let anchor = window.frame();
+        let visible = screen.visibleFrame();
+        Ok(windows::cocoa_menu_position(
+            primary.frame().size.height,
+            windows::Rect { x: anchor.origin.x, y: anchor.origin.y, w: anchor.size.width, h: anchor.size.height },
+            windows::Rect { x: visible.origin.x, y: visible.origin.y, w: visible.size.width, h: visible.size.height },
+        ))
+    }).map_err(|e| e.to_string())?
+}
 fn place_panel(app: &tauri::AppHandle) -> Result<()> {
-    let pet = pet_rect(app)?;
-    let a = monitor_rect(app, pet)?;
-    let (placed_pet, r) = windows::panel_layout(pet, a);
-    if placed_pet.x != pet.x || placed_pet.y != pet.y {
-        app.get_webview_window("pet").ok_or("窗口不存在")?
-            .set_position(LogicalPosition::new(placed_pet.x, placed_pet.y))
-            .map_err(|e| e.to_string())?;
-    }
+    #[cfg(target_os = "macos")]
+    let r = menu_panel_position(app)?;
+    #[cfg(not(target_os = "macos"))]
+    let r = {
+        let pet = pet_rect(app)?;
+        let a = monitor_rect(app, pet)?;
+        let (placed_pet, r) = windows::panel_layout(pet, a);
+        if placed_pet.x != pet.x || placed_pet.y != pet.y {
+            app.get_webview_window("pet").ok_or("窗口不存在")?
+                .set_position(LogicalPosition::new(placed_pet.x, placed_pet.y))
+                .map_err(|e| e.to_string())?;
+        }
+        r
+    };
     if let Some(w) = app.get_webview_window("panel") {
         w.set_size(LogicalSize::new(r.w, r.h))
             .map_err(|e| e.to_string())?;
@@ -204,85 +232,62 @@ fn show_panel_from_tray(
     _point: PhysicalPosition<f64>,
 ) -> Result<()> {
     #[cfg(target_os = "macos")]
-    let r = {
-        use objc2::MainThreadMarker;
-        use objc2_app_kit::{NSEvent, NSScreen};
-        let mtm = MainThreadMarker::new().ok_or("窗口操作需在主线程执行")?;
-        let screens = NSScreen::screens(mtm);
-        let primary = screens.firstObject().ok_or("无法获取主屏幕")?;
-        let point = NSEvent::mouseLocation();
-        let screen = screens
-            .iter()
-            .find(|screen| {
-                let f = screen.frame();
-                point.x >= f.origin.x
-                    && point.x < f.origin.x + f.size.width
-                    && point.y >= f.origin.y
-                    && point.y < f.origin.y + f.size.height
-            })
-            .ok_or("无法获取菜单栏所在屏幕")?;
-        let f = screen.visibleFrame();
-        windows::cocoa_menu_position(
-            primary.frame().size.height,
-            point.x,
-            windows::Rect {
-                x: f.origin.x,
-                y: f.origin.y,
-                w: f.size.width,
-                h: f.size.height,
-            },
-        )
-    };
+    {
+        show_panel(app)
+    }
     #[cfg(not(target_os = "macos"))]
-    let r = {
-        let monitors = app.available_monitors().map_err(|e| e.to_string())?;
-        let monitor = monitors
-            .iter()
-            .find(|m| {
-                let p = m.position();
-                let z = m.size();
-                _point.x >= p.x as f64
-                    && _point.x < p.x as f64 + z.width as f64
-                    && _point.y >= p.y as f64
-                    && _point.y < p.y as f64 + z.height as f64
-            })
-            .or(monitors.first())
-            .ok_or("无法获取屏幕区域")?;
-        let scale = monitor.scale_factor();
-        let at = _rect.position.to_logical::<f64>(scale);
-        let size = _rect.size.to_logical::<f64>(scale);
-        let area = monitor.work_area();
-        windows::clamp(
-            windows::Rect {
-                x: at.x + size.width / 2. - 220.,
-                y: at.y + size.height + 8.,
-                w: 440.,
-                h: 620.,
-            },
-            windows::Rect {
-                x: area.position.x as f64 / scale,
-                y: area.position.y as f64 / scale,
-                w: area.size.width as f64 / scale,
-                h: area.size.height as f64 / scale,
-            },
-        )
-    };
-    if let Ok(pet) = pet_rect(app) {
-        if !windows::panel_clear_of_pet(r, pet) {
-            return show_panel(app);
+    {
+        let r = {
+            let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+            let monitor = monitors
+                .iter()
+                .find(|m| {
+                    let p = m.position();
+                    let z = m.size();
+                    _point.x >= p.x as f64
+                        && _point.x < p.x as f64 + z.width as f64
+                        && _point.y >= p.y as f64
+                        && _point.y < p.y as f64 + z.height as f64
+                })
+                .or(monitors.first())
+                .ok_or("无法获取屏幕区域")?;
+            let scale = monitor.scale_factor();
+            let at = _rect.position.to_logical::<f64>(scale);
+            let size = _rect.size.to_logical::<f64>(scale);
+            let area = monitor.work_area();
+            windows::clamp(
+                windows::Rect {
+                    x: at.x + size.width / 2. - 220.,
+                    y: at.y + size.height + 8.,
+                    w: 440.,
+                    h: 620.,
+                },
+                windows::Rect {
+                    x: area.position.x as f64 / scale,
+                    y: area.position.y as f64 / scale,
+                    w: area.size.width as f64 / scale,
+                    h: area.size.height as f64 / scale,
+                },
+            )
+        };
+        if let Ok(pet) = pet_rect(app) {
+            if !windows::panel_clear_of_pet(r, pet) {
+                return show_panel(app);
+            }
         }
+        if let Some(w) = app.get_webview_window("panel") {
+            w.set_size(LogicalSize::new(r.w, r.h))
+                .map_err(|e| e.to_string())?;
+            w.set_position(LogicalPosition::new(r.x, r.y))
+                .map_err(|e| e.to_string())?;
+            w.show().map_err(|e| e.to_string())?;
+            w.set_focus().map_err(|e| e.to_string())?;
+            app.emit("panel-visibility", true).map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
-    if let Some(w) = app.get_webview_window("panel") {
-        w.set_size(LogicalSize::new(r.w, r.h))
-            .map_err(|e| e.to_string())?;
-        w.set_position(LogicalPosition::new(r.x, r.y))
-            .map_err(|e| e.to_string())?;
-        w.show().map_err(|e| e.to_string())?;
-        w.set_focus().map_err(|e| e.to_string())?;
-        app.emit("panel-visibility", true).map_err(|e| e.to_string())?;
-    }
-    Ok(())
 }
+
 #[tauri::command]
 fn toggle_panel(app: tauri::AppHandle) -> Result<()> {
     let w = app.get_webview_window("panel").ok_or("窗口不存在")?;
@@ -448,7 +453,7 @@ pub fn run() {
             let pet = MenuItem::with_id(app, "pet", "显示 / 隐藏精灵", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出 Task Sprite", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &pet, &quit])?;
-            TrayIconBuilder::new()
+            TrayIconBuilder::with_id("main")
                 .tooltip("Task Sprite · 桌面任务伙伴")
                 .icon(tauri::image::Image::from_bytes(include_bytes!(
                     "../icons/tray-template.png"
@@ -537,6 +542,7 @@ pub fn run() {
                         }
                     };
                 }
+                #[cfg(not(target_os = "macos"))]
                 if let Some(panel) = w.app_handle().get_webview_window("panel") {
                     if panel.is_visible().unwrap_or(false) {
                         let _ = place_panel(w.app_handle());

@@ -301,7 +301,7 @@ fn menu_panel_uses_one_logical_coordinate_space_across_displays() {
     // AppKit points: 1440pt Retina main + 1280pt external at 1x.
     let r = cocoa_menu_position(
         900.,
-        2600.,
+        Rect { x: 2588., y: 878., w: 24., h: 22. },
         Rect {
             x: 1440.,
             y: 0.,
@@ -315,7 +315,7 @@ fn menu_panel_uses_one_logical_coordinate_space_across_displays() {
     // A display above the primary has a negative top-left y.
     let above = cocoa_menu_position(
         900.,
-        600.,
+        Rect { x: 588., y: 1678., w: 24., h: 22. },
         Rect {
             x: 0.,
             y: 900.,
@@ -387,7 +387,7 @@ fn panels_stay_inside_common_screen_work_areas() {
         let beside = panel_position(pet, work);
         let from_menu = cocoa_menu_position(
             height,
-            width - 100.,
+            Rect { x: width - 112., y: height - 24., w: 24., h: 24. },
             Rect {
                 x: 0.,
                 y: 48.,
@@ -547,4 +547,21 @@ fn deleting_completed_tasks_leaves_other_tasks_and_their_reminders_unchanged() {
     assert_eq!(serde_json::to_value(&snap.tasks[0]).unwrap(),serde_json::to_value(&remaining).unwrap());
     assert_eq!(snap.settings.focus_id, Some(remaining.id));
     assert_eq!(s.snoozes().unwrap().len(),1);
+}
+
+#[test]
+fn mac_panel_is_anchored_below_the_status_item_and_clamped_to_its_screen() {
+    let visible = Rect { x: 0., y: 48., w: 1440., h: 830. };
+    let middle = cocoa_menu_position(900., Rect { x: 1000., y: 878., w: 24., h: 22. }, visible);
+    assert_eq!((middle.x, middle.y, middle.w, middle.h), (792., 30., 440., 620.));
+    let right = cocoa_menu_position(900., Rect { x: 1416., y: 878., w: 24., h: 22. }, visible);
+    assert_eq!((right.x, right.y), (1000., 30.));
+    let left = cocoa_menu_position(900., Rect { x: 0., y: 878., w: 24., h: 22. }, visible);
+    assert_eq!((left.x, left.y), (0., 30.));
+}
+
+#[test]
+fn mac_panel_stays_below_a_revealed_auto_hidden_menu_bar() {
+    let panel = cocoa_menu_position(900., Rect { x: 1000., y: 878., w: 24., h: 22. }, Rect { x: 0., y: 48., w: 1440., h: 852. });
+    assert_eq!(panel.y, 30.);
 }

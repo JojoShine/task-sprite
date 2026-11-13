@@ -15,10 +15,12 @@ pub fn clamp(r: Rect, a: Rect) -> Rect {
         h,
     }
 }
+#[cfg(any(not(target_os = "macos"), test))]
 fn pet_footprint(p: Rect) -> Rect {
     // Covers the rendered sprite element and the full pedestal in the 300×230 pet window.
     Rect { x: p.x + 60., y: p.y + 61., w: 180., h: 167. }
 }
+#[cfg(any(not(target_os = "macos"), test))]
 pub fn panel_position(p: Rect, a: Rect) -> Rect {
     let body = pet_footprint(p);
     let gap = 12.;
@@ -43,6 +45,7 @@ pub fn panel_position(p: Rect, a: Rect) -> Rect {
     // At a cramped screen center, reserve the larger side; panel_layout lets the pet step aside.
     clamp(Rect { x: if left_w >= right_w { a.x } else { a.x + a.w - w }, y: body.y + body.h - h, w, h }, a)
 }
+#[cfg(any(not(target_os = "macos"), test))]
 pub fn panel_layout(p: Rect, a: Rect) -> (Rect, Rect) {
     let panel = panel_position(p, a);
     let body = pet_footprint(p);
@@ -56,6 +59,7 @@ pub fn panel_layout(p: Rect, a: Rect) -> (Rect, Rect) {
     (pet, panel_position(pet, a))
 }
 
+#[cfg(any(not(target_os = "macos"), test))]
 pub fn panel_clear_of_pet(panel: Rect, pet: Rect) -> bool {
     let body = pet_footprint(pet);
     panel.x + panel.w + 12. <= body.x
@@ -65,7 +69,7 @@ pub fn panel_clear_of_pet(panel: Rect, pet: Rect) -> bool {
 }
 
 #[cfg(any(target_os = "macos", test))]
-pub fn cocoa_menu_position(primary_height: f64, pointer_x: f64, visible: Rect) -> Rect {
+pub fn cocoa_menu_position(primary_height: f64, status: Rect, visible: Rect) -> Rect {
     // AppKit uses global logical points with a bottom-left origin.
     let area = Rect {
         x: visible.x,
@@ -75,8 +79,8 @@ pub fn cocoa_menu_position(primary_height: f64, pointer_x: f64, visible: Rect) -
     };
     clamp(
         Rect {
-            x: pointer_x - 220.,
-            y: area.y + 8.,
+            x: status.x + status.w / 2. - 220.,
+            y: area.y.max(primary_height - status.y) + 8.,
             w: 440.,
             h: 620.,
         },
