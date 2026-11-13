@@ -7,11 +7,10 @@ export function weekSlots(now = new Date()) {
   if (now.getHours() >= 17) start.setDate(start.getDate() + 1);
   return Array.from({ length: 8 }, (_, i) => {
     const d = new Date(start); d.setDate(start.getDate() + i);
-    const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
     const date = localDay(d);
     return {
       date,
-      label: date === localDay(now) ? "今天" : date === localDay(tomorrow) ? "明天" : i === 7 ? `下${weekdays[d.getDay()]}` : weekdays[d.getDay()],
+      label: deadlineLabel(date, null, now),
       weekday: weekdays[d.getDay()],
       shortDate: `${d.getMonth() + 1}/${d.getDate()}`,
       times: (i === 0 && afternoon ? ["17:00"] : i === 7 && !afternoon ? ["12:00"] : ["12:00", "17:00"]) as DeadlineTime[],

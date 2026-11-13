@@ -1,3 +1,4 @@
+mod export;
 mod notifications;
 mod reminders;
 mod store;
@@ -13,6 +14,7 @@ use tauri::{
 };
 
 use chrono::Local;
+use tauri_plugin_dialog::DialogExt;
 use serde::Deserialize;
 struct AppState(Mutex<Store>);
 fn locked(app: &tauri::AppHandle) -> Result<tauri::State<'_, AppState>> {
@@ -46,6 +48,27 @@ fn save_task(app: tauri::AppHandle, input: TaskInput) -> Result<Snapshot> {
         let _ = app.emit("celebrate", ());
     }
     broadcast(&app, &s)
+}
+#[tauri::command]
+async fn export_tasks(app: tauri::AppHandle) -> Result<Option<String>> {
+    let snapshot = {
+        let state = locked(&app)?;
+        let store = state.0.lock().map_err(|_| "数据库暂不可用")?;
+        store.snapshot()?
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let parent = app.get_webview_window("panel").ok_or("任务面板不可用")?;
+        let file = app.dialog().file()
+            .set_parent(&parent)
+            .set_title("导出全部任务")
+            .add_filter("CSV 文件", &["csv"])
+            .set_file_name(format!("Task-Sprite-任务-{}.csv", Local::now().format("%Y-%m-%d-%H%M%S")))
+            .blocking_save_file();
+        let Some(file) = file else { return Ok(None); };
+        let path = file.into_path().map_err(|e| e.to_string())?;
+        std::fs::write(&path, export::tasks_csv(&snapshot)).map_err(|e| format!("导出失败：{e}"))?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    }).await.map_err(|e| e.to_string())?
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -129,6 +152,7 @@ fn monitor_rect(app: &tauri::AppHandle, p: windows::Rect) -> Result<windows::Rec
         })
         .or(rects.first())
         .copied()
+        .map(windows::right_inset)
         .ok_or("无法获取屏幕区域".into())
 }
 fn pet_rect(app: &tauri::AppHandle) -> Result<windows::Rect> {
@@ -224,12 +248,12 @@ fn show_panel_from_tray(
                 w: 440.,
                 h: 620.,
             },
-            windows::Rect {
+            windows::right_inset(windows::Rect {
                 x: area.position.x as f64 / scale,
                 y: area.position.y as f64 / scale,
                 w: area.size.width as f64 / scale,
                 h: area.size.height as f64 / scale,
-            },
+            }),
         )
     };
     if let Some(w) = app.get_webview_window("panel") {
@@ -377,10 +401,12 @@ pub fn run() {
             let _ = show_panel(app);
         }))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             get_local_identity,
             save_task,
+            export_tasks,
             update_preferences,
             set_focus,
             snooze,

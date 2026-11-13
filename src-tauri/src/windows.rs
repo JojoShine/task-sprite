@@ -15,6 +15,9 @@ pub fn clamp(r: Rect, a: Rect) -> Rect {
         h,
     }
 }
+pub fn right_inset(area: Rect) -> Rect {
+    Rect { w: (area.w - 32.).max(1.), ..area }
+}
 pub fn panel_position(p: Rect, a: Rect) -> Rect {
     let w = 440.;
     let h = (p.y + 90. - a.y).clamp(500., 620.);
@@ -33,12 +36,12 @@ pub fn panel_position(p: Rect, a: Rect) -> Rect {
 #[cfg(any(target_os = "macos", test))]
 pub fn cocoa_menu_position(primary_height: f64, pointer_x: f64, visible: Rect) -> Rect {
     // AppKit uses global logical points with a bottom-left origin.
-    let area = Rect {
+    let area = right_inset(Rect {
         x: visible.x,
         y: primary_height - visible.y - visible.h,
         w: visible.w,
         h: visible.h,
-    };
+    });
     clamp(
         Rect {
             x: pointer_x - 220.,

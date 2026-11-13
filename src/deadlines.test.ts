@@ -28,3 +28,10 @@ it("marks an afternoon deadline overdue at 17:00 but retains legacy all-day date
   expect(isTaskOverdue({ ...task, dueTime: null }, new Date(2026, 10, 16, 23))).toBe(false);
   expect(deadlineLabel("2026-11-23", "12:00", new Date(2026, 10, 16, 9))).toBe("下周一 上午");
 });
+
+it("labels every date by the calendar week rather than only the last slot", () => {
+  const now = new Date(2026, 10, 13, 20);
+  expect(weekSlots(now).map(d => d.label)).toEqual(["明天", "周日", "下周一", "下周二", "下周三", "下周四", "下周五", "下周六"]);
+  for (const d of weekSlots(now)) expect(d.label).toBe(deadlineLabel(d.date, null, now));
+  expect(weekSlots(new Date(2026, 11, 31, 20)).find(d => d.date === "2027-01-04")?.label).toBe("下周一");
+});

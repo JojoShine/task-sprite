@@ -7,6 +7,7 @@ export const api = {
     invoke<[number, number]>("get_pet_position").then(([x, y]) => ({ x, y })),
   movePet: (point: { x: number; y: number }) => invoke<void>("move_pet", point),
   snapshot: () => invoke<Snapshot>("get_snapshot"),
+  exportTasks: () => invoke<string | null>("export_tasks"),
   identity: () => invoke<LocalIdentity>("get_local_identity"),
   save: ({ id, title, description, priority, status, dueDate, dueTime }: TaskInput) =>
     invoke<Snapshot>("save_task", {

@@ -310,7 +310,7 @@ fn menu_panel_uses_one_logical_coordinate_space_across_displays() {
         },
     );
     assert!(r.x >= 1440.);
-    assert_eq!(r.x + r.w, 2720.);
+    assert_eq!(r.x + r.w, 2720. - 32.);
     assert_eq!(r.y, 30.);
     // A display above the primary has a negative top-left y.
     let above = cocoa_menu_position(
@@ -420,4 +420,53 @@ fn pet_panel_opens_centered_above_the_character_and_shrinks_to_available_height(
     assert_eq!(panel.h, 506.);
     assert_eq!(panel.y, lower.y);
     assert_eq!(panel.y + panel.h, 530.);
+}
+
+
+#[test]
+fn csv_exports_every_task_attribute_and_handles_spreadsheet_text() {
+    let mut s = Store::memory().unwrap();
+    let mut first = input("=HYPERLINK(恶意公式)", Some("2026-11-14"));
+    first.description = "一行,带逗号\n第二行\"引号\"".into();
+    first.priority = "high".into();
+    first.due_time = Some("17:00".into());
+    let todo = s.save_task(first).unwrap();
+    s.set_focus(Some(todo.id.clone())).unwrap();
+    let mut done = input("已完成的中文任务", None);
+    done.status = "completed".into();
+    s.save_task(done).unwrap();
+    let snap = s.snapshot().unwrap();
+    let csv = crate::export::tasks_csv(&snap);
+    assert!(csv.starts_with("\u{feff}\"任务ID\",\"任务标题\",\"任务说明\",\"优先级\",\"状态\",\"创建时间\",\"更新时间\",\"计划完成日期\",\"计划完成时段\",\"计划完成时间\",\"实际完成时间\",\"是否当前任务\"\r\n"));
+    assert!(csv.contains(&format!("\"{}\",\"'=HYPERLINK(恶意公式)\"", todo.id)));
+    assert!(csv.contains("\"一行,带逗号\n第二行\"\"引号\"\"\""));
+    assert!(csv.contains("\"高\",\"待办\""));
+    assert!(csv.contains("\"2026-11-14\",\"17:00\",\"2026-11-14 17:00\""));
+    assert!(csv.contains("\"已完成的中文任务\""));
+    assert!(csv.contains("\"已完成\""));
+    assert!(csv.contains("\"是\"\r\n"));
+    for task in snap.tasks {
+        let created = chrono::DateTime::parse_from_rfc3339(&task.created_at).unwrap().with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M:%S %:z").to_string();
+        assert!(csv.contains(&created));
+    }
+}
+#[test]
+fn empty_csv_still_contains_all_column_headers() {
+    let csv = crate::export::tasks_csv(&Store::memory().unwrap().snapshot().unwrap());
+    assert_eq!(csv.matches("\r\n").count(), 1);
+    assert!(csv.contains("计划完成时间"));
+}
+
+
+#[test]
+fn desktop_windows_leave_a_right_screen_gutter() {
+    use crate::windows::{right_inset, clamp, panel_position, Rect};
+    for (width, height) in [(1024.,600.), (1440.,900.), (2560.,1440.)] {
+        let screen = Rect { x: -100., y: 24., w: width, h: height - 72. };
+        let area = right_inset(screen);
+        let pet = clamp(Rect { x: screen.x + width, y: 500., w: 300., h: 230. }, area);
+        let panel = panel_position(pet, area);
+        assert!(pet.x + pet.w <= screen.x + screen.w - 32.);
+        assert!(panel.x + panel.w <= screen.x + screen.w - 32.);
+    }
 }

@@ -1275,3 +1275,6 @@ button:not(:disabled):active { opacity: .75; }
 }
 
 .speech.has-task .speech-content > span { -webkit-line-clamp: 1; }
+
+.export-card > button { margin-top: 12px; width: 100%; justify-content: center; }
+.export-card > p[role] { overflow-wrap: anywhere; }
