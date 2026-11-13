@@ -7,7 +7,7 @@ import {
   cleanup,
 } from "@testing-library/react";
 import { TaskEditor } from "./TaskEditor";
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 it("keeps the user draft visible when saving fails", async () => {
   render(
     <TaskEditor
@@ -93,4 +93,19 @@ it("replaces the form while choosing time and restores an unsaved draft on cance
   fireEvent.click(screen.getByRole("button", { name: "返回任务编辑" }));
   expect((screen.getByLabelText("任务内容") as HTMLTextAreaElement).value).toBe("不能丢失这段话");
   expect(screen.getByRole("radio", { name: "高优先级" }).getAttribute("aria-checked")).toBe("true");
+});
+
+it("fits the loaded task text and shrinks again after shortening it", () => {
+  let contentHeight = 164;
+  vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get").mockImplementation(() => contentHeight);
+  render(<TaskEditor task={{ id: "long", title: "完整任务", description: "这是一段需要完整展示的补充说明。", priority: "med", status: "todo", dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null }} onSave={async () => {}} onClose={() => {}} />);
+  const input = screen.getByLabelText("任务内容") as HTMLTextAreaElement;
+  expect(parseFloat(input.style.height)).toBeGreaterThanOrEqual(164);
+  contentHeight = 81;
+  fireEvent.change(input, { target: { value: "一件小事" } });
+  expect(parseFloat(input.style.height)).toBeLessThan(100);
+  contentHeight = 164;
+  fireEvent.click(screen.getByRole("button", { name: "选择截止时间" }));
+  fireEvent.click(screen.getByRole("button", { name: "返回任务编辑" }));
+  expect(parseFloat((screen.getByLabelText("任务内容") as HTMLTextAreaElement).style.height)).toBeGreaterThanOrEqual(164);
 });

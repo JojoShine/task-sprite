@@ -669,9 +669,10 @@ h3 {
   gap: 10px;
 }
 .task-input {
-  min-height: 78px;
-  height: 82px;
-  max-height: 100px;
+  min-height: 82px;
+  height: auto;
+  max-height: none;
+  overflow-y: hidden;
   line-height: 1.7;
   font-size: 17px;
   resize: none;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, CalendarBlank, CaretRight } from "@phosphor-icons/react";
 import type { Task, TaskInput } from "./types";
 import { message } from "./api";
@@ -35,6 +35,21 @@ export function TaskEditor({
     if (!choosingDate && wasChoosing.current) dateButton.current?.focus();
     wasChoosing.current = choosingDate;
   }, [choosingDate]);
+  const contentInput = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const input = contentInput.current;
+    if (!input) return;
+    const resize = () => {
+      input.style.height = "auto";
+      const style = getComputedStyle(input);
+      const border = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+      input.style.height = `${Math.ceil(input.scrollHeight + border)}px`;
+      input.scrollTop = 0;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [text, choosingDate]);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const content = text.trim();
@@ -80,6 +95,7 @@ export function TaskEditor({
       <label className="task-content-label">
         任务内容
         <textarea
+          ref={contentInput}
           className="task-input"
           aria-label="任务内容"
           autoFocus
