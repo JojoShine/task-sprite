@@ -49,7 +49,7 @@ export function Pet({
   const groups = groupTasks(snapshot.tasks);
   const ordered = Object.values(groups).flat();
   const focus = ordered.find((t) => t.id === s.focusId);
-  const bubbleTasks = focus ? [focus, ...ordered.filter(task => task.id !== focus.id)] : ordered;
+  const bubbleTasks = focus && groups.overdue.length === 0 ? [focus, ...ordered.filter(task => task.id !== focus.id)] : ordered;
   const drag = useRef<ReturnType<typeof createDragSession> | null>(null);
   const [dragError, setDragError] = useState("");
   const quiet = isQuietTime(s.quietStart, s.quietEnd);

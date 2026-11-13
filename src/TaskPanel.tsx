@@ -5,10 +5,10 @@ import {
   Check,
   Star,
   Clock,
-  ArrowDown,
+  CaretUp,
+  CaretDown,
   X,
   Play,
-  Sparkle,
 } from "@phosphor-icons/react";
 import { useState, useRef, useEffect } from "react";
 import type { Snapshot, Task, VisualState } from "./types";
@@ -53,7 +53,9 @@ export function TaskPanel({
   const [view, setView] = useState<"tasks" | "settings" | "editor">("tasks");
   const [editing, setEditing] = useState<Task>();
   const [completed, setCompleted] = useState(false);
-  const [all, setAll] = useState(false);
+  const taskPage = useRef<HTMLDivElement>(null);
+  const [pageSize, setPageSize] = useState(3);
+  const [pageSelection, setPageSelection] = useState({ key: "", index: 0 });
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -61,7 +63,28 @@ export function TaskPanel({
   const today = localDay();
   const groups = groupTasks(snapshot.tasks);
   const todos = Object.values(groups).flat();
-  const focus = todos.find((t) => t.id === snapshot.settings.focusId);
+  const listed = completed ? snapshot.tasks.filter(task => task.status === "completed") : todos;
+  const pageKey = completed ? "completed" : `todo:${groups.overdue.map(task => task.id).join("|")}`;
+  useEffect(() => setPageSelection({ key: pageKey, index: 0 }), [pageKey, pageSize]);
+  useEffect(() => {
+    const area = taskPage.current;
+    if (!area || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const card = area.querySelector<HTMLElement>(".task-row");
+      if (!card) return;
+      const minimum = parseFloat(getComputedStyle(card).minHeight) || 62;
+      const gap = parseFloat(getComputedStyle(area).rowGap) || 6;
+      setPageSize(Math.min(3, Math.max(1, Math.floor((area.clientHeight + gap) / (minimum + gap)))));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    measure();
+    return () => observer.disconnect();
+  }, [view, completed, listed.length]);
+  const pageCount = Math.max(1, Math.ceil(listed.length / pageSize));
+  const pageIndex = Math.min(pageSelection.key === pageKey ? pageSelection.index : 0, pageCount - 1);
+  const pageTasks = listed.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize);
+  const turnPage = (index: number) => { setPageSelection({ key: pageKey, index }); setSnoozing(null); };
   const date = new Date();
   const dayText = `${date.getMonth() + 1}月${date.getDate()}日 ${["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()]}`;
   async function act(id: string, work: () => Promise<Snapshot | void>) {
@@ -85,7 +108,7 @@ export function TaskPanel({
     const overdueDays = task.dueDate ? daysOverdue(task.dueDate, today) : 0;
     return (
       <div
-        className={`task-row ${task.status === "completed" ? "completed" : ""}`}
+        className={`task-row ${task.status === "completed" ? "completed" : overdue ? "is-overdue" : ""}`}
         key={task.id}
       >
         <button
@@ -110,9 +133,10 @@ export function TaskPanel({
           ) : null}
         </button>
         <div className="task-copy">
-          <button className="task-title" onClick={() => edit(task)}>
+          <button className="task-title" title={task.title} onClick={() => edit(task)}>
             {task.title}
           </button>
+          <div className="task-bottom">
           <div className="task-meta">
             <span>
               {task.priority === "high"
@@ -136,7 +160,7 @@ export function TaskPanel({
           </div>
           {task.status === "todo" && (
             <div className="task-actions">
-              <button
+              {snoozing !== task.id && <><button
                 aria-label={`专注 ${task.title}`}
                 disabled={busy === task.id}
                 onClick={() =>
@@ -154,17 +178,18 @@ export function TaskPanel({
                   }
                 />
                 {snapshot.settings.focusId === task.id
-                  ? "当前专注"
-                  : "设为当前"}
+                  ? "当前"
+                  : "专注"}
               </button>
               <button
+                aria-label={`稍后提醒 ${task.title}`}
                 onClick={() =>
                   setSnoozing(snoozing === task.id ? null : task.id)
                 }
               >
                 <Clock size={14} />
-                稍后提醒
-              </button>
+                稍后
+              </button></>}
               {snoozing === task.id && (
                 <span className="snooze-options">
                   {([30, 120] as const).map((m) => (
@@ -181,19 +206,21 @@ export function TaskPanel({
                         })
                       }
                     >
-                      {m === 30 ? "30分钟" : "2小时"}
+                      {m === 30 ? "30分" : "2时"}
                     </button>
                   ))}
+                  <button aria-label="取消稍后提醒选择" onClick={() => setSnoozing(null)}><X size={13} /></button>
                 </span>
               )}
             </div>
           )}
+          </div>
         </div>
       </div>
     );
   }
   return (
-    <div className="panel-shell">
+    <div className="panel-shell" data-list={view === "tasks" && listed.length > 0 ? "paged" : undefined}>
       <div className="paper">
         <header className="topbar">
           <div className="brand">
@@ -214,7 +241,7 @@ export function TaskPanel({
             </button>
           </div>
         </header>
-        <div className={`panel-content ${view === "tasks" && (completed ? snapshot.tasks.every(task => task.status !== "completed") : todos.length === 0) ? "empty-view" : ""} ${notificationWarning ? "has-notice" : ""}`}>
+        <div className={`panel-content ${view === "tasks" && (completed ? snapshot.tasks.every(task => task.status !== "completed") : todos.length === 0) ? "empty-view" : view === "tasks" ? "paged-view" : ""} ${notificationWarning ? "has-notice" : ""}`}>
           {view === "editor" ? (
             <TaskEditor
               key={editing?.id ?? "new"}
@@ -242,7 +269,9 @@ export function TaskPanel({
               <h1>
                 {completed
                   ? "做完的事，都算数。"
-                  : todos.length
+                  : groups.overdue.length
+                    ? "先处理逾期的事。"
+                    : todos.length
                     ? "今天，先做好这几件。"
                     : "从一件小事开始。"}
               </h1>
@@ -268,10 +297,8 @@ export function TaskPanel({
                 </button>
               </div>
               {completed ? (
-                <div>
-                  {snapshot.tasks
-                    .filter((t) => t.status === "completed")
-                    .map(row)}
+                <div className="task-page" ref={taskPage}>
+                  {pageTasks.map(row)}
                   {snapshot.tasks.every((t) => t.status !== "completed") && (
                     <div className="empty-small">
                       还没有完成的任务。慢慢来。
@@ -280,23 +307,6 @@ export function TaskPanel({
                 </div>
               ) : (
                 <>
-                  {focus && (
-                    <div className="focus-line">
-                      <span className="icon-text">
-                        <Star size={15} weight="fill" />
-                        当前专注
-                      </span>
-                      <button onClick={() => edit(focus)}>{focus.title}</button>
-                      <button
-                        aria-label="取消专注"
-                        onClick={() =>
-                          void act(focus.id, () => api.focus(null))
-                        }
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  )}
                   {todos.length === 0 ? (
                     <div className="empty">
                       <Sprite
@@ -320,63 +330,15 @@ export function TaskPanel({
                       </button>
                     </div>
                   ) : (
-                    <>
-                      {(
-                        [
-                          ["overdue", "已逾期"],
-                          ["today", "今天到期"],
-                          ["upcoming", "接下来"],
-                          ["undated", "有空再安排"],
-                        ] as const
-                      ).map(
-                        ([key, label]) =>
-                          groups[key].length > 0 && (
-                            <section key={key} className="task-group">
-                              <h3
-                                className={key === "overdue" ? "overdue" : ""}
-                              >
-                                {label}
-                                <span>{groups[key].length}</span>
-                              </h3>
-                              {(all
-                                ? groups[key]
-                                : groups[key].slice(0, 2)
-                              ).map(row)}
-                            </section>
-                          ),
-                      )}
-                      {Object.values(groups).some((g) => g.length > 2) && (
-                        <button
-                          className="text-button more"
-                          onClick={() => setAll(!all)}
-                        >
-                          {all ? "收起更多任务" : "查看全部待办"}
-                          <ArrowDown size={15} />
-                        </button>
-                      )}
-                      <div className="gentle-note">
-                        <Sparkle size={20} weight="duotone" />
-                        <p>
-                          {groups.overdue.length
-                            ? "先照顾到期的事，也给自己留一点余地。"
-                            : "不必一次做完所有事，专注下一步就好。"}
-                        </p>
-                      </div>
-                      <div className="bottom-actions">
-                        <button className="primary" onClick={() => edit()}>
-                          记下一件事
-                        </button>
-                        <button
-                          className="text-button"
-                          onClick={() => setView("settings")}
-                        >
-                          提醒设置
-                        </button>
-                      </div>
-                    </>
+                    <div className="task-page" ref={taskPage}>{pageTasks.map(row)}</div>
                   )}
                 </>
               )}
+              {listed.length > 0 && <nav className="task-pager" aria-label="任务翻页">
+                <button aria-label="上一页任务" disabled={pageIndex === 0} onClick={() => turnPage(pageIndex - 1)}><CaretUp size={17} /><span>上一页</span></button>
+                <span aria-live="polite">{pageIndex + 1} / {pageCount}</span>
+                <button aria-label="下一页任务" disabled={pageIndex === pageCount - 1} onClick={() => turnPage(pageIndex + 1)}><span>下一页</span><CaretDown size={17} /></button>
+              </nav>}
               {notificationWarning && (
                 <p className="notification-note" role="status">
                   {notificationWarning}{" "}

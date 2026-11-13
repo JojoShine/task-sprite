@@ -59,3 +59,41 @@ it("cycles a task stack without opening the panel and handles task removal", () 
   expect(screen.getByText(/接下来：写报告/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "下一项任务" })).toBeNull();
 });
+
+it("shows an overdue task before a focused future task and marks its bubble", () => {
+  const base = { description: "", status: "todo" as const, dueTime: "17:00", createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const tasks = [
+    { ...base, id: "future", title: "明天的重点任务", priority: "high" as const, dueDate: "2026-11-14" },
+    { ...base, id: "old", title: "昨天遗漏的任务", priority: "low" as const, dueDate: "2026-11-12" },
+  ];
+  render(<Pet snapshot={{ ...snapshot, tasks, settings: { ...snapshot.settings, focusId: "future" } }} animation={null} />);
+  expect(screen.getByText(/逾期提醒：昨天遗漏的任务/)).toBeTruthy();
+  expect(screen.getByText(/已逾期1天/)).toBeTruthy();
+});
+it("returns to an overdue bubble when a new deadline passes while viewing another task", () => {
+  const base = { description: "", priority: "med" as const, status: "todo" as const, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const tasks = [
+    { ...base, id: "one", title: "上午截止的任务", dueDate: "2026-11-13", dueTime: "12:00" },
+    { ...base, id: "two", title: "明天再做", dueDate: "2026-11-14", dueTime: "17:00" },
+  ];
+  vi.setSystemTime(new Date(2026, 10, 13, 11, 59));
+  const { rerender } = render(<Pet snapshot={{ ...snapshot, tasks }} animation={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
+  expect(screen.getByText(/接下来：明天再做/)).toBeTruthy();
+  vi.setSystemTime(new Date(2026, 10, 13, 12, 1));
+  rerender(<Pet snapshot={{ ...snapshot, tasks }} animation={null} />);
+  expect(screen.getByText(/逾期提醒：上午截止的任务/)).toBeTruthy();
+  expect(screen.getByText(/已过截止时间/)).toBeTruthy();
+});
+
+it("does not revive a future selection when an overdue task is completed then restored", () => {
+  const base = { description: "", priority: "med" as const, status: "todo" as const, dueTime: "17:00", createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const old = { ...base, id: "old", title: "恢复的逾期任务", dueDate: "2026-11-12" };
+  const future = { ...base, id: "future", title: "未来的任务", dueDate: "2026-11-14" };
+  const { rerender } = render(<Pet snapshot={{ ...snapshot, tasks: [old, future] }} animation={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
+  expect(screen.getByText(/接下来：未来的任务/)).toBeTruthy();
+  rerender(<Pet snapshot={{ ...snapshot, tasks: [{ ...old, status: "completed" }, future] }} animation={null} />);
+  rerender(<Pet snapshot={{ ...snapshot, tasks: [old, future] }} animation={null} />);
+  expect(screen.getByText(/逾期提醒：恢复的逾期任务/)).toBeTruthy();
+});
