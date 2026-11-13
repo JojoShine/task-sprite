@@ -408,7 +408,7 @@ fn panels_stay_inside_common_screen_work_areas() {
 
 
 #[test]
-fn pet_panel_opens_centered_above_the_character_and_shrinks_to_available_height() {
+fn pet_panel_prefers_above_when_it_fits_and_otherwise_uses_a_free_side() {
     use crate::windows::{panel_position, Rect};
     let area = Rect { x: 0., y: 24., w: 1440., h: 828. };
     let pet = Rect { x: 600., y: 600., w: 300., h: 230. };
@@ -417,9 +417,9 @@ fn pet_panel_opens_centered_above_the_character_and_shrinks_to_available_height(
     assert!(panel.y + panel.h <= pet.y + 90.);
     let lower = Rect { x: 0., y: 24., w: 1280., h: 648. };
     let panel = panel_position(Rect { y: 440., ..pet }, lower);
-    assert_eq!(panel.h, 506.);
-    assert_eq!(panel.y, lower.y);
-    assert_eq!(panel.y + panel.h, 530.);
+    assert_eq!((panel.w, panel.h), (440., 620.));
+    assert!(panel.x + panel.w + 12. <= pet.x + 60.);
+    assert!(panel.y >= lower.y && panel.y + panel.h <= lower.y + lower.h);
 }
 
 
@@ -469,4 +469,57 @@ fn desktop_windows_leave_a_right_screen_gutter() {
         assert!(pet.x + pet.w <= screen.x + screen.w - 32.);
         assert!(panel.x + panel.w <= screen.x + screen.w - 32.);
     }
+}
+
+
+#[test]
+fn panel_placement_avoids_the_character_at_edges_corners_and_screen_center() {
+    use crate::windows::{panel_layout, right_inset, Rect};
+    for (width, height, offset_x, offset_y) in [
+        (800., 1000., 0., 24.), (1024., 600., 0., 24.), (1280., 720., 0., 24.),
+        (1366., 768., 0., 24.), (1440., 900., 0., 24.),
+        (1920., 1080., -1920., 24.), (2560., 1440., 0., -1440.),
+    ] {
+        let area = right_inset(Rect { x: offset_x, y: offset_y, w: width, h: height - 72. });
+        for x in [area.x, area.x + (area.w - 300.) / 2., area.x + area.w - 300.] {
+            for y in [area.y, area.y + (area.h - 230.) / 2., area.y + area.h - 230.] {
+                let original = Rect { x, y, w: 300., h: 230. };
+                let (pet, panel) = panel_layout(original, area);
+                let body = Rect { x: pet.x + 60., y: pet.y + 61., w: 180., h: 167. };
+                assert!(panel.x >= area.x && panel.y >= area.y, "{width}x{height} at {x},{y}");
+                assert!(panel.x + panel.w <= area.x + area.w && panel.y + panel.h <= area.y + area.h);
+                assert!(panel.w >= 420. && panel.h >= 500.);
+                assert!(panel.x + panel.w + 12. <= body.x || body.x + body.w + 12. <= panel.x || panel.y + panel.h + 12. <= body.y || body.y + body.h + 12. <= panel.y, "overlap at {width}x{height}, {x},{y}: {pet:?} {panel:?}");
+                assert!(pet.x >= area.x && pet.x + pet.w <= area.x + area.w);
+                assert_eq!(pet.y, original.y);
+                let (again, panel_again) = panel_layout(pet, area);
+                assert_eq!((again.x, again.y), (pet.x, pet.y));
+                assert_eq!((panel_again.x, panel_again.y, panel_again.w, panel_again.h), (panel.x, panel.y, panel.w, panel.h));
+            }
+        }
+    }
+}
+#[test]
+fn top_corner_panels_use_the_free_side_without_moving_the_pet() {
+    use crate::windows::{panel_layout, right_inset, Rect};
+    let area = right_inset(Rect { x: 0., y: 24., w: 1440., h: 828. });
+    let left = Rect { x: 0., y: 24., w: 300., h: 230. };
+    let (pet, panel) = panel_layout(left, area);
+    assert_eq!(pet.x, left.x);
+    assert!(panel.x >= left.x + 240. + 12.);
+    let right = Rect { x: area.w - 300., ..left };
+    let (pet, panel) = panel_layout(right, area);
+    assert_eq!(pet.x, right.x);
+    assert!(panel.x + panel.w + 12. <= right.x + 60.);
+}
+
+
+#[test]
+fn tray_panel_collision_is_detected_only_near_the_character() {
+    use crate::windows::{panel_clear_of_pet, Rect};
+    let panel = Rect { x: 900., y: 32., w: 440., h: 620. };
+    let top_pet = Rect { x: 1000., y: 24., w: 300., h: 230. };
+    assert!(!panel_clear_of_pet(panel, top_pet));
+    assert!(panel_clear_of_pet(panel, Rect { x: 100., ..top_pet }));
+    assert!(panel_clear_of_pet(panel, Rect { y: 700., ..top_pet }));
 }

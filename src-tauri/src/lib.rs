@@ -169,7 +169,12 @@ fn pet_rect(app: &tauri::AppHandle) -> Result<windows::Rect> {
 fn place_panel(app: &tauri::AppHandle) -> Result<()> {
     let pet = pet_rect(app)?;
     let a = monitor_rect(app, pet)?;
-    let r = windows::panel_position(pet, a);
+    let (placed_pet, r) = windows::panel_layout(pet, a);
+    if placed_pet.x != pet.x || placed_pet.y != pet.y {
+        app.get_webview_window("pet").ok_or("窗口不存在")?
+            .set_position(LogicalPosition::new(placed_pet.x, placed_pet.y))
+            .map_err(|e| e.to_string())?;
+    }
     if let Some(w) = app.get_webview_window("panel") {
         w.set_size(LogicalSize::new(r.w, r.h))
             .map_err(|e| e.to_string())?;
@@ -256,6 +261,11 @@ fn show_panel_from_tray(
             }),
         )
     };
+    if let Ok(pet) = pet_rect(app) {
+        if !windows::panel_clear_of_pet(r, pet) {
+            return show_panel(app);
+        }
+    }
     if let Some(w) = app.get_webview_window("panel") {
         w.set_size(LogicalSize::new(r.w, r.h))
             .map_err(|e| e.to_string())?;
