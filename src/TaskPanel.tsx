@@ -316,7 +316,7 @@ export function TaskPanel({
                       <p>把它记下来，我陪你一点点完成。</p>
                       <button className="primary" onClick={() => edit()}>
                         <Plus size={18} />
-                        记下第一件事
+                        <span>记下第一件事</span>
                       </button>
                     </div>
                   ) : (
