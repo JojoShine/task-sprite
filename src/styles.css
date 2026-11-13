@@ -1200,7 +1200,7 @@ button:not(:disabled):active { opacity: .75; }
 .task-page .task-actions button { font-size: 13px; line-height: 18px; gap: 3px; white-space: nowrap; }
 .task-page .snooze-options { padding: 0; gap: 6px; background: transparent; }
 .task-pager { display: flex; justify-content: center; align-items: center; gap: 16px; min-height: 30px; flex-shrink: 0; margin-top: 8px; }
-.task-pager > button { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--surface); color: var(--green); font-size: 13px; clip-path: var(--pixel-cut); }
+.task-pager > button { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; background: var(--surface); color: var(--green); font-size: 13px; clip-path: var(--pixel-cut); }
 .task-pager > button:disabled { cursor: default; opacity: .3; }
 .task-pager > span { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .panel-shell[data-list="paged"] .pet-option { flex-direction: row; justify-content: center; align-items: center; gap: 3px; padding: 4px 1px; }

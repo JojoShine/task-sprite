@@ -5,8 +5,8 @@ import {
   Check,
   Star,
   Clock,
-  CaretUp,
-  CaretDown,
+  CaretLeft,
+  CaretRight,
   X,
   Play,
 } from "@phosphor-icons/react";
@@ -335,9 +335,9 @@ export function TaskPanel({
                 </>
               )}
               {listed.length > 0 && <nav className="task-pager" aria-label="任务翻页">
-                <button aria-label="上一页任务" disabled={pageIndex === 0} onClick={() => turnPage(pageIndex - 1)}><CaretUp size={17} /><span>上一页</span></button>
+                <button aria-label="上一页任务" disabled={pageIndex === 0} onClick={() => turnPage(pageIndex - 1)}><CaretLeft size={19} /></button>
                 <span aria-live="polite">{pageIndex + 1} / {pageCount}</span>
-                <button aria-label="下一页任务" disabled={pageIndex === pageCount - 1} onClick={() => turnPage(pageIndex + 1)}><span>下一页</span><CaretDown size={17} /></button>
+                <button aria-label="下一页任务" disabled={pageIndex === pageCount - 1} onClick={() => turnPage(pageIndex + 1)}><CaretRight size={19} /></button>
               </nav>}
               {notificationWarning && (
                 <p className="notification-note" role="status">
