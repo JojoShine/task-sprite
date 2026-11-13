@@ -73,8 +73,11 @@ export function TaskPanel({
       const card = area.querySelector<HTMLElement>(".task-row");
       if (!card) return;
       const minimum = parseFloat(getComputedStyle(card).minHeight) || 62;
-      const gap = parseFloat(getComputedStyle(area).rowGap) || 6;
-      setPageSize(Math.min(3, Math.max(1, Math.floor((area.clientHeight + gap) / (minimum + gap)))));
+      const cards = area.querySelector<HTMLElement>(".task-page");
+      const gap = cards ? parseFloat(getComputedStyle(cards).rowGap) || 6 : 6;
+      const pager = area.querySelector<HTMLElement>(".task-pager");
+      const reserved = pager ? pager.offsetHeight + (parseFloat(getComputedStyle(pager).marginTop) || 0) : 0;
+      setPageSize(Math.min(3, Math.max(1, Math.floor((area.clientHeight - reserved + gap) / (minimum + gap)))));
     };
     const observer = new ResizeObserver(measure);
     observer.observe(area);
@@ -296,8 +299,9 @@ export function TaskPanel({
                   新增
                 </button>
               </div>
+              <div className="task-list-area" ref={taskPage}>
               {completed ? (
-                <div className="task-page" ref={taskPage}>
+                <div className="task-page">
                   {pageTasks.map(row)}
                   {snapshot.tasks.every((t) => t.status !== "completed") && (
                     <div className="empty-small">
@@ -330,7 +334,7 @@ export function TaskPanel({
                       </button>
                     </div>
                   ) : (
-                    <div className="task-page" ref={taskPage}>{pageTasks.map(row)}</div>
+                    <div className="task-page">{pageTasks.map(row)}</div>
                   )}
                 </>
               )}
@@ -339,6 +343,7 @@ export function TaskPanel({
                 <span aria-live="polite">{pageIndex + 1} / {pageCount}</span>
                 <button aria-label="下一页任务" disabled={pageIndex === pageCount - 1} onClick={() => turnPage(pageIndex + 1)}><CaretRight size={19} /></button>
               </nav>}
+              </div>
               {notificationWarning && (
                 <p className="notification-note" role="status">
                   {notificationWarning}{" "}

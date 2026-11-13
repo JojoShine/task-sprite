@@ -361,3 +361,47 @@ fn theme_defaults_for_legacy_settings_and_persists_with_validation() {
         "dark"
     );
 }
+
+#[test]
+fn panels_stay_inside_common_screen_work_areas() {
+    for (width, height) in [
+        (1024., 600.),
+        (1280., 720.),
+        (1366., 768.),
+        (1440., 900.),
+        (1920., 1080.),
+        (2560., 1440.),
+    ] {
+        let work = Rect {
+            x: 0.,
+            y: 24.,
+            w: width,
+            h: height - 72.,
+        };
+        let pet = Rect {
+            x: width - 320.,
+            y: work.y + work.h - 250.,
+            w: 300.,
+            h: 230.,
+        };
+        let beside = panel_position(pet, work);
+        let from_menu = cocoa_menu_position(
+            height,
+            width - 100.,
+            Rect {
+                x: 0.,
+                y: 48.,
+                w: width,
+                h: height - 72.,
+            },
+        );
+        for panel in [beside, from_menu] {
+            assert!(panel.x >= work.x && panel.y >= work.y, "{width}x{height}");
+            assert!(
+                panel.x + panel.w <= work.x + work.w && panel.y + panel.h <= work.y + work.h,
+                "{width}x{height}"
+            );
+            assert!(panel.w >= 420. && panel.h >= 500., "{width}x{height}");
+        }
+    }
+}

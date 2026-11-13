@@ -117,11 +117,21 @@ it("returns to the first page after switching to completed and back", () => {
   expect(screen.getByRole("button", { name: "分页任务0" })).toBeTruthy();
 });
 it("reduces the page size when the available task area cannot fit three rows", () => {
-  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("task-page") ? 136 : 0; });
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("task-list-area") ? 136 : 0; });
   vi.stubGlobal("ResizeObserver", class { constructor(private changed: () => void) {} observe() { this.changed(); } disconnect() {} });
   const tasks = [0,1,2,3].map(i => ({ id: String(i), title: `紧凑任务${i}`, description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null }));
   render(<TaskPanel snapshot={{ ...snapshot, tasks }} onSnapshot={() => {}} />);
   expect(screen.getAllByRole("button", { name: /^完成 / })).toHaveLength(2);
   fireEvent.click(screen.getByRole("button", { name: "下一页任务" }));
   expect(screen.getByRole("button", { name: "紧凑任务2" })).toBeTruthy();
+});
+
+it("reserves pagination height before fitting task cards", () => {
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("task-list-area") || this.classList.contains("task-page") ? 168 : 0; });
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("task-pager") ? 40 : 0; });
+  vi.stubGlobal("ResizeObserver", class { constructor(private changed: () => void) {} observe() { this.changed(); } disconnect() {} });
+  const tasks = [0,1,2].map(i => ({ id: String(i), title: `空间测试${i}`, description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null }));
+  render(<TaskPanel snapshot={{ ...snapshot, tasks }} onSnapshot={() => {}} />);
+  expect(screen.getAllByRole("button", { name: /^完成 / })).toHaveLength(1);
+  expect(screen.getByText("1 / 3")).toBeTruthy();
 });
