@@ -1,0 +1,24 @@
+# Execution ledger — plan: docs/plans/2026-11-13-macos.md
+User authorized direct inline execution on 2026-11-13.
+Preflight: Task/Settings/Snapshot signatures shared across Rust IPC and React; types use camelCase JSON throughout.
+Ruling: new empty standalone repository is already isolated from FlowCraft; initialize a feature branch here, no additional worktree.
+Ruling: keep Rust toolchain under ignored .tooling to avoid changing shell profiles or global toolchains.
+Task 1: complete — independent repository, project-local Rust 1.100, Tauri native debug app constructed and opened on macOS 26.5 arm64.
+Task 2: complete — SQLite persistence tests pass, create/edit Chinese task verified in actual app.
+Task 3: complete — deterministic summary/quiet/snooze tests; UTC snooze regression covers DST fall-back.
+Task 4: native two-window app and menu bar running; actual panel and four role switches observed. Detailed runtime acceptance ongoing.
+Task 5: four original transparent atlases generated and visually inspected; selected note style rendered in native WKWebView.
+Review: fresh read-only reviewer found four issues. Completion payload and post-commit refresh fixed with frontend RED→GREEN; absolute snooze and failed notification consumption fixed with Rust RED→GREEN. 13 Rust tests and 7 frontend tests pass.
+Ruling: macOS notification authorization and submission need native UserNotifications, since the generic plugin reports Granted unconditionally and submits asynchronously. Added a small platform adapter; other platforms retain generic plugin and remain unverified.
+Ruling: dev dependencies were updated to patched stable Vite8/Vitest5 after npm reported issues in the initially selected versions; official npm audit reports zero vulnerabilities after the update.
+Task 6: macOS arm64 release app built successfully (19.68 MiB); complete bundle ad-hoc signing verified. Developer ID/notarization intentionally not configured.
+Runtime acceptance: native panel visually checked; Chinese task create/edit, completion, completed-list restore, 30-minute snooze scheduling, four role choices and role/task persistence across app restart verified via native UI. Actual test fixture removed after quitting; default shiba restored.
+Notification acceptance: initial unbound linker signature caused authorization registration failure; full bundle ad-hoc signature fixed it. Native macOS authorization prompt observed and allowed; UserNotifications acknowledged the test request. OS notification banner visibility/click was not observed under screen-capture automation, so not claimed verified. System focus/sharing rules may suppress presentation.
+Drag acceptance: native dragging is wired, but automated drag attempts did not confirm a position change. Manual drag feel and real multi-monitor/Spaces/fullscreen require further device acceptance; geometry logic has tests.
+Ruling: retain explicit permission/submission distinction; do not report OS acceptance as proof the user saw a notification. No reminder is consumed when authorization or native submission fails.
+Ruling: fresh independent repository has no upstream/base branch to merge into. Preserve the implementation locally on codex/macos-companion; no push, merge, or publishing.
+Deferred validation: Windows, monitor disconnect/scale changes, Spaces/fullscreen, sleep/wake on actual hardware, notification click and banner display. Reminder logic for elapsed time/quiet hours/restart covered by deterministic tests.
+
+Drag follow-up: reading tao's macOS implementation confirmed delayed startDragging can receive no current NSEvent and return Ok without moving. Replaced it with narrow get_pet_position/move_pet commands and pointer capture; latest-position coalescing and click/drag distinction have two RED→GREEN regression tests. Native position commands clamp to work area. Native UI automation did not reliably target the non-activating pet window (it switched to the panel), so a physical drag remains unverified; do not claim it was observed moving.
+Final validation: 9 frontend tests and 13 Rust tests pass; optimized macOS app build succeeds; full local ad-hoc bundle signature verifies; npm audit reports zero vulnerabilities. Fixed delivery copy at release/Task Sprite.app. No developer certificate, notarization or external publication.
+Resource snapshot (main process only, not total app/WebKit): PID9333 sampled at 0.8% CPU and 86,304 KiB RSS with panel open. This is one instantaneous reading, not a power/battery benchmark; release app directory occupies approximately20MiB.
