@@ -100,7 +100,7 @@ it("does not revive a future selection when an overdue task is completed then re
 });
 
 
-it("keeps the current task visible while browsing overdue reminders and clears it on completion", () => {
+it("uses one current card with an overdue reminder and returns to the bubble on completion", () => {
   const base = { description: "", priority: "med" as const, status: "todo" as const, dueTime: "17:00", createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
   const old = { ...base, id: "old", title: "待补交的周报", dueDate: "2026-11-12" };
   const current = { ...base, id: "current", title: "整理明天的计划", dueDate: "2026-11-14" };
@@ -108,12 +108,16 @@ it("keeps the current task visible while browsing overdue reminders and clears i
   const { rerender } = render(<Pet snapshot={{ tasks: [old, current], settings }} animation={null} onSnapshot={() => {}} />);
   const currentTask = screen.getByRole("button", { name: "正在做：整理明天的计划" });
   expect(screen.getByText(/逾期提醒：待补交的周报/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
-  expect(screen.getByRole("button", { name: "正在做：整理明天的计划" })).toBe(currentTask);
+  expect(screen.getByRole("group", { name: "当前任务卡片" })).toBeTruthy();
+  expect(screen.queryByRole("group", { name: "桌面任务提示" })).toBeNull();
+  expect(screen.getByRole("status", { name: "任务底座：待办2项，逾期1项" })).toBeTruthy();
   fireEvent.click(currentTask);
   expect(api.toggle).toHaveBeenCalledTimes(1);
   rerender(<Pet snapshot={{ tasks: [old, { ...current, status: "completed" }], settings }} animation={null} onSnapshot={() => {}} />);
   expect(screen.queryByRole("button", { name: "正在做：整理明天的计划" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "当前任务卡片" })).toBeNull();
+  expect(screen.getByRole("group", { name: "桌面任务提示" })).toBeTruthy();
+  expect(screen.getByRole("status", { name: "任务底座：待办1项，逾期1项" })).toBeTruthy();
   expect(screen.getByText(/逾期提醒：待补交的周报/)).toBeTruthy();
 });
 
@@ -166,4 +170,20 @@ it("keeps the task and overdue reminder visible when completion fails and permit
   expect(onSnapshot).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("alert")).toBeNull();
   expect(api.toggle).not.toHaveBeenCalled();
+});
+
+
+it("hides the head card while the panel is open and restores it on close while retaining the base", () => {
+  const task = { id: "current", title: "展开后继续处理", description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const focused = { tasks: [task], settings: { ...snapshot.settings, focusId: task.id } };
+  const { rerender } = render(<Pet snapshot={focused} animation={null} onSnapshot={() => {}} panelVisible />);
+  expect(screen.queryByRole("button", { name: "正在做：展开后继续处理" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "桌面任务提示" })).toBeNull();
+  expect(screen.getByRole("status", { name: "任务底座：待办1项，逾期0项" })).toBeTruthy();
+  rerender(<Pet snapshot={focused} animation={null} onSnapshot={() => {}} panelVisible={false} />);
+  expect(screen.getByRole("button", { name: "正在做：展开后继续处理" })).toBeTruthy();
+  rerender(<Pet snapshot={{ ...focused, settings: snapshot.settings }} animation={null} onSnapshot={() => {}} panelVisible />);
+  expect(screen.queryByRole("group", { name: "桌面任务提示" })).toBeNull();
+  rerender(<Pet snapshot={{ ...focused, settings: snapshot.settings }} animation={null} onSnapshot={() => {}} panelVisible={false} />);
+  expect(screen.getByRole("group", { name: "桌面任务提示" })).toBeTruthy();
 });

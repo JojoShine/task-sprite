@@ -17,16 +17,12 @@ pub fn clamp(r: Rect, a: Rect) -> Rect {
 }
 pub fn panel_position(p: Rect, a: Rect) -> Rect {
     let w = 440.;
-    let h = 620.;
-    let x = if p.x + p.w + 12. + w <= a.x + a.w {
-        p.x + p.w + 12.
-    } else {
-        p.x - w - 12.
-    };
+    let h = (p.y + 90. - a.y).clamp(500., 620.);
+    let x = p.x + p.w / 2. - w / 2.;
     clamp(
         Rect {
             x,
-            y: p.y + p.h - h,
+            y: p.y + 90. - h,
             w,
             h,
         },

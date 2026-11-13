@@ -405,3 +405,19 @@ fn panels_stay_inside_common_screen_work_areas() {
         }
     }
 }
+
+
+#[test]
+fn pet_panel_opens_centered_above_the_character_and_shrinks_to_available_height() {
+    use crate::windows::{panel_position, Rect};
+    let area = Rect { x: 0., y: 24., w: 1440., h: 828. };
+    let pet = Rect { x: 600., y: 600., w: 300., h: 230. };
+    let panel = panel_position(pet, area);
+    assert_eq!(panel.x + panel.w / 2., pet.x + pet.w / 2.);
+    assert!(panel.y + panel.h <= pet.y + 90.);
+    let lower = Rect { x: 0., y: 24., w: 1280., h: 648. };
+    let panel = panel_position(Rect { y: 440., ..pet }, lower);
+    assert_eq!(panel.h, 506.);
+    assert_eq!(panel.y, lower.y);
+    assert_eq!(panel.y + panel.h, 530.);
+}

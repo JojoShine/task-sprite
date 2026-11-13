@@ -9,6 +9,7 @@ export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   useTheme(snapshot?.settings.theme);
   const [error, setError] = useState("");
+  const [panelVisible, setPanelVisible] = useState(false);
   const [animation, setAnimation] = useState<VisualState | null>(null);
   const animationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, setClock] = useState(0);
@@ -18,6 +19,7 @@ export function App() {
   }, []);
   useEffect(() => {
     let active = true;
+    let visibilityVersion = 0;
     let unsub: (() => void)[] = [];
     const play = (state: VisualState, duration = 5000) => {
       if (animationTimer.current) clearTimeout(animationTimer.current);
@@ -37,6 +39,7 @@ export function App() {
           },
         ],
         ["snapshot", (s: Snapshot) => setSnapshot(s)],
+        ["panel-visibility", (visible: boolean) => { visibilityVersion++; setPanelVisible(visible); }],
         ["clock", () => setClock((c) => c + 1)],
         [
           "celebrate",
@@ -73,7 +76,11 @@ export function App() {
       try {
         if (active) {
           await refresh();
-          if (new URLSearchParams(location.search).get("view") !== "pet") {
+          if (new URLSearchParams(location.search).get("view") === "pet") {
+            const version = visibilityVersion;
+            const visible = await api.panelVisible();
+            if (active && version === visibilityVersion) setPanelVisible(visible);
+          } else {
             const status = await api.notificationStatus();
             if (status !== "granted")
               setNotificationWarning(
@@ -113,7 +120,7 @@ export function App() {
       </div>
     );
   return pet ? (
-    <Pet snapshot={snapshot} animation={animation} onSnapshot={setSnapshot} />
+    <Pet snapshot={snapshot} animation={animation} onSnapshot={setSnapshot} panelVisible={panelVisible} />
   ) : (
     <TaskPanel
       snapshot={snapshot}

@@ -159,6 +159,7 @@ fn show_panel(app: &tauri::AppHandle) -> Result<()> {
     if let Some(w) = app.get_webview_window("panel") {
         w.show().map_err(|e| e.to_string())?;
         w.set_focus().map_err(|e| e.to_string())?;
+        app.emit("panel-visibility", true).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -238,6 +239,7 @@ fn show_panel_from_tray(
             .map_err(|e| e.to_string())?;
         w.show().map_err(|e| e.to_string())?;
         w.set_focus().map_err(|e| e.to_string())?;
+        app.emit("panel-visibility", true).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -245,7 +247,7 @@ fn show_panel_from_tray(
 fn toggle_panel(app: tauri::AppHandle) -> Result<()> {
     let w = app.get_webview_window("panel").ok_or("窗口不存在")?;
     if w.is_visible().map_err(|e| e.to_string())? {
-        w.hide().map_err(|e| e.to_string())
+        hide_task_panel(&app)
     } else {
         show_panel(&app)
     }
@@ -273,11 +275,22 @@ fn move_pet(app: tauri::AppHandle, x: f64, y: f64) -> Result<()> {
         .set_position(LogicalPosition::new(r.x, r.y))
         .map_err(|e| e.to_string())
 }
-#[tauri::command]
-fn hide_panel(app: tauri::AppHandle) -> Result<()> {
+fn hide_task_panel(app: &tauri::AppHandle) -> Result<()> {
     app.get_webview_window("panel")
         .ok_or("窗口不存在")?
         .hide()
+        .map_err(|e| e.to_string())?;
+    app.emit("panel-visibility", false).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn hide_panel(app: tauri::AppHandle) -> Result<()> {
+    hide_task_panel(&app)
+}
+#[tauri::command]
+fn is_panel_visible(app: tauri::AppHandle) -> Result<bool> {
+    app.get_webview_window("panel")
+        .ok_or("窗口不存在")?
+        .is_visible()
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
@@ -373,6 +386,7 @@ pub fn run() {
             snooze,
             toggle_panel,
             hide_panel,
+            is_panel_visible,
             get_pet_position,
             move_pet,
             request_notifications,
@@ -462,7 +476,11 @@ pub fn run() {
         .on_window_event(|w, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
-                let _ = w.hide();
+                if w.label() == "panel" {
+                    let _ = hide_task_panel(w.app_handle());
+                } else {
+                    let _ = w.hide();
+                }
             }
             tauri::WindowEvent::Moved(PhysicalPosition { x, y }) if w.label() == "pet" => {
                 if let Ok(scale) = w.scale_factor() {
@@ -475,6 +493,11 @@ pub fn run() {
                             let _ = s.set_settings(st);
                         }
                     };
+                }
+                if let Some(panel) = w.app_handle().get_webview_window("panel") {
+                    if panel.is_visible().unwrap_or(false) {
+                        let _ = place_panel(w.app_handle());
+                    }
                 }
             }
             _ => {}
