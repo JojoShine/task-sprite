@@ -165,7 +165,7 @@ export function TaskPanel({
             <div className="task-actions">
               {snoozing !== task.id && <><button
                 aria-label={`${snapshot.settings.focusId === task.id ? "取消当前" : "设为当前"} ${task.title}`}
-                title={snapshot.settings.focusId === task.id ? "取消当前任务标记" : "标记为正在做的任务；无逾期任务时桌宠优先展示，不启动计时"}
+                title={snapshot.settings.focusId === task.id ? "取消当前任务标记" : "在桌宠上固定显示正在做的任务；逾期提醒同时保留，不启动计时"}
                 disabled={busy === task.id}
                 onClick={() =>
                   void act(task.id, () =>

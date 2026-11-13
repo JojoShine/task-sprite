@@ -97,3 +97,30 @@ it("does not revive a future selection when an overdue task is completed then re
   rerender(<Pet snapshot={{ ...snapshot, tasks: [old, future] }} animation={null} />);
   expect(screen.getByText(/逾期提醒：恢复的逾期任务/)).toBeTruthy();
 });
+
+
+it("keeps the current task visible while browsing overdue reminders and clears it on completion", () => {
+  const base = { description: "", priority: "med" as const, status: "todo" as const, dueTime: "17:00", createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const old = { ...base, id: "old", title: "待补交的周报", dueDate: "2026-11-12" };
+  const current = { ...base, id: "current", title: "整理明天的计划", dueDate: "2026-11-14" };
+  const settings = { ...snapshot.settings, focusId: current.id };
+  const { rerender } = render(<Pet snapshot={{ tasks: [old, current], settings }} animation={null} />);
+  const currentTask = screen.getByRole("button", { name: "正在做：整理明天的计划" });
+  expect(screen.getByText(/逾期提醒：待补交的周报/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
+  expect(screen.getByRole("button", { name: "正在做：整理明天的计划" })).toBe(currentTask);
+  fireEvent.click(currentTask);
+  expect(api.toggle).toHaveBeenCalledTimes(1);
+  rerender(<Pet snapshot={{ tasks: [old, { ...current, status: "completed" }], settings }} animation={null} />);
+  expect(screen.queryByRole("button", { name: "正在做：整理明天的计划" })).toBeNull();
+  expect(screen.getByText(/逾期提醒：待补交的周报/)).toBeTruthy();
+});
+
+it("shows the current task even with hints hidden and removes it when unselected", () => {
+  const task = { id: "current", title: "正在整理的资料", description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const settings = { ...snapshot.settings, focusId: task.id, showHint: false };
+  const { rerender } = render(<Pet snapshot={{ tasks: [task], settings }} animation={null} />);
+  expect(screen.getByRole("button", { name: "正在做：正在整理的资料" })).toBeTruthy();
+  rerender(<Pet snapshot={{ tasks: [task], settings: { ...settings, focusId: null } }} animation={null} />);
+  expect(screen.queryByRole("button", { name: "正在做：正在整理的资料" })).toBeNull();
+});

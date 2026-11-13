@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { Star } from "@phosphor-icons/react";
 import { TaskBubble } from "./TaskBubble";
 import { createDragSession } from "./drag";
 import type { PetId, VisualState, Snapshot } from "./types";
@@ -70,12 +71,23 @@ export function Pet({
     (motion.activity ? pose[motion.activity] : quiet ? "rest" : "idle");
   return (
     <div
-      className="pet-view"
+      className={`pet-view ${focus ? "has-current" : ""}`}
       onContextMenu={(e) => {
         e.preventDefault();
         void api.toggle();
       }}
     >
+      {focus && (
+        <button
+          className="pet-current"
+          aria-label={`正在做：${focus.title}`}
+          title={`正在做：${focus.title}`}
+          onClick={() => void api.toggle()}
+        >
+          <span className="pet-current-label"><Star size={13} weight="fill" />正在做</span>
+          <span className="pet-current-title" aria-live="polite">{focus.title}</span>
+        </button>
+      )}
       {(s.showHint || motion.caption) && (
         <TaskBubble tasks={bubbleTasks} focusId={s.focusId} caption={motion.caption ?? (animation === "celebrate" ? "给自己一点掌声，继续加油。" : null)} onOpen={() => void api.toggle()} />
       )}
