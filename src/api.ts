@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Snapshot, TaskInput, Settings } from "./types";
+import { emit } from "@tauri-apps/api/event";
+import type { Snapshot, TaskInput, Settings, VisualState } from "./types";
 export const api = {
+  preview: (state: VisualState) => emit("preview-animation", state),
   petPosition: () =>
     invoke<[number, number]>("get_pet_position").then(([x, y]) => ({ x, y })),
   movePet: (point: { x: number; y: number }) => invoke<void>("move_pet", point),

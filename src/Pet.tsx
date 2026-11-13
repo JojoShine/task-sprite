@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { createDragSession } from "./drag";
 import type { PetId, VisualState, Snapshot } from "./types";
-import { groupTasks } from "./domain";
+import { groupTasks, isQuietTime } from "./domain";
 import { api } from "./api";
 export const pets: {
   id: PetId;
@@ -24,6 +24,7 @@ export function Sprite({
   return (
     <span
       aria-hidden="true"
+      data-state={state}
       className={`sprite ${still ? "still" : ""}`}
       style={{
         backgroundImage: `url(/pets/${pet}.png)`,
@@ -34,12 +35,10 @@ export function Sprite({
 }
 export function Pet({
   snapshot,
-  celebrating,
-  notice,
+  animation,
 }: {
   snapshot: Snapshot;
-  celebrating: boolean;
-  notice: boolean;
+  animation: VisualState | null;
 }) {
   const s = snapshot.settings;
   const groups = groupTasks(snapshot.tasks);
@@ -47,14 +46,8 @@ export function Pet({
   const focus = ordered.find((t) => t.id === s.focusId) ?? ordered[0];
   const drag = useRef<ReturnType<typeof createDragSession> | null>(null);
   const [dragError, setDragError] = useState("");
-  const hour = new Date().getHours();
-  const state: VisualState = celebrating
-    ? "celebrate"
-    : notice
-      ? "reminder"
-      : hour >= 23 || hour < 8
-        ? "rest"
-        : "idle";
+  const state: VisualState =
+    animation ?? (isQuietTime(s.quietStart, s.quietEnd) ? "rest" : "idle");
   return (
     <div
       className="pet-view"
@@ -66,8 +59,8 @@ export function Pet({
       {s.showHint && (
         <button className="speech" onClick={() => void api.toggle()}>
           <span>
-            {celebrating
-              ? "又完成一件，做得不错！"
+            {state === "celebrate"
+              ? "给自己一点掌声，继续加油。"
               : focus
                 ? `${s.focusId ? "当前专注" : "接下来"}：${focus.title}`
                 : "今天，有什么想完成的事？"}

@@ -128,8 +128,8 @@ fn pet_rect(app: &tauri::AppHandle) -> Result<windows::Rect> {
     Ok(windows::Rect {
         x: p.x as f64 / scale,
         y: p.y as f64 / scale,
-        w: 260.,
-        h: 200.,
+        w: 300.,
+        h: 230.,
     })
 }
 fn place_panel(app: &tauri::AppHandle) -> Result<()> {
@@ -174,8 +174,8 @@ fn move_pet(app: tauri::AppHandle, x: f64, y: f64) -> Result<()> {
     let p = windows::Rect {
         x,
         y,
-        w: 260.,
-        h: 200.,
+        w: 300.,
+        h: 230.,
     };
     let a = monitor_rect(&app, p)?;
     let r = windows::clamp(p, a);
@@ -248,14 +248,14 @@ fn restore_pet(app: &tauri::AppHandle) -> Result<()> {
     let default = windows::Rect {
         x: st.pet_x.unwrap_or(99999.),
         y: st.pet_y.unwrap_or(99999.),
-        w: 260.,
-        h: 200.,
+        w: 300.,
+        h: 230.,
     };
     let a = monitor_rect(app, default)?;
     let p = if st.pet_x.is_none() {
         windows::Rect {
-            x: a.x + a.w - 280.,
-            y: a.y + a.h - 220.,
+            x: a.x + a.w - 320.,
+            y: a.y + a.h - 250.,
             ..default
         }
     } else {

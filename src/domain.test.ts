@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { daysOverdue, groupTasks, localDay } from "./domain";
+import { daysOverdue, groupTasks, localDay, isQuietTime } from "./domain";
 import type { Task } from "./types";
 const task = (
   id: string,
@@ -55,4 +55,16 @@ describe("calendar task ordering", () => {
     const d = new Date(2026, 10, 13, 0, 1);
     expect(localDay(d)).toBe("2026-11-13");
   });
+});
+
+it("uses configured quiet hours to decide rest animation", () => {
+  expect(isQuietTime("14:00", "16:00", new Date(2026, 10, 13, 15, 0))).toBe(
+    true,
+  );
+  expect(isQuietTime("23:00", "08:00", new Date(2026, 10, 13, 7, 59))).toBe(
+    true,
+  );
+  expect(isQuietTime("09:00", "09:00", new Date(2026, 10, 13, 9, 0))).toBe(
+    false,
+  );
 });

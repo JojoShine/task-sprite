@@ -31,3 +31,14 @@ export function groupTasks(tasks: Task[], today = localDay()) {
   }
   return groups;
 }
+
+export function isQuietTime(start: string, end: string, now = new Date()) {
+  const minute = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const s = minute(start),
+    e = minute(end),
+    n = now.getHours() * 60 + now.getMinutes();
+  return s === e ? false : s < e ? n >= s && n < e : n >= s || n < e;
+}

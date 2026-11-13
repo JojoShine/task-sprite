@@ -1,7 +1,19 @@
-import { useState } from "react";
-import type { Snapshot, Task } from "./types";
+import {
+  GearSix,
+  Minus,
+  Plus,
+  Check,
+  Star,
+  Clock,
+  ArrowDown,
+  X,
+  Play,
+  Sparkle,
+} from "@phosphor-icons/react";
+import { useState, useRef, useEffect } from "react";
+import type { Snapshot, Task, VisualState } from "./types";
 import { api, message } from "./api";
-import { localDay, daysOverdue, groupTasks } from "./domain";
+import { localDay, daysOverdue, groupTasks, isQuietTime } from "./domain";
 import { Sprite, pets } from "./Pet";
 import { TaskEditor } from "./TaskEditor";
 import { Settings } from "./Settings";
@@ -9,11 +21,34 @@ export function TaskPanel({
   snapshot,
   onSnapshot,
   notificationWarning,
+  animation,
 }: {
   snapshot: Snapshot;
   onSnapshot: (next: Snapshot) => void;
   notificationWarning?: string;
+  animation?: VisualState | null;
 }) {
+  const [showActions, setShowActions] = useState(false);
+  const [previewStatus, setPreviewStatus] = useState("");
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+    },
+    [],
+  );
+  async function preview(state: VisualState, label: string) {
+    try {
+      await api.preview(state);
+      setPreviewStatus(
+        `正在演示${label}${snapshot.settings.reduceMotion ? "（静态姿势）" : ""}`,
+      );
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+      previewTimer.current = setTimeout(() => setPreviewStatus(""), 5000);
+    } catch (e) {
+      setError(message(e));
+    }
+  }
   const [view, setView] = useState<"tasks" | "settings" | "editor">("tasks");
   const [editing, setEditing] = useState<Task>();
   const [completed, setCompleted] = useState(false);
@@ -68,7 +103,9 @@ export function TaskPanel({
             )
           }
         >
-          {task.status === "completed" ? "✓" : ""}
+          {task.status === "completed" ? (
+            <Check size={15} weight="bold" />
+          ) : null}
         </button>
         <div className="task-copy">
           <button className="task-title" onClick={() => edit(task)}>
@@ -110,8 +147,14 @@ export function TaskPanel({
                   )
                 }
               >
+                <Star
+                  size={14}
+                  weight={
+                    snapshot.settings.focusId === task.id ? "fill" : "regular"
+                  }
+                />
                 {snapshot.settings.focusId === task.id
-                  ? "★ 当前专注"
+                  ? "当前专注"
                   : "设为当前"}
               </button>
               <button
@@ -119,6 +162,7 @@ export function TaskPanel({
                   setSnoozing(snoozing === task.id ? null : task.id)
                 }
               >
+                <Clock size={14} />
                 稍后提醒
               </button>
               {snoozing === task.id && (
@@ -153,7 +197,7 @@ export function TaskPanel({
       <div className="paper">
         <header className="topbar">
           <div className="brand">
-            <span className="pixel-star">✦</span>
+            <Sparkle className="brand-mark" size={25} weight="duotone" />
             <b>Task Sprite</b>
           </div>
           <div className="window-actions">
@@ -163,10 +207,10 @@ export function TaskPanel({
                 setView(view === "settings" ? "tasks" : "settings");
               }}
             >
-              ⚙
+              <GearSix size={21} />
             </button>
             <button aria-label="收起面板" onClick={() => void api.hide()}>
-              −
+              <Minus size={22} />
             </button>
           </div>
         </header>
@@ -219,7 +263,8 @@ export function TaskPanel({
                   className="text-button add-small"
                   onClick={() => edit()}
                 >
-                  新增 ＋
+                  <Plus size={16} />
+                  新增
                 </button>
               </div>
               {completed ? (
@@ -237,7 +282,10 @@ export function TaskPanel({
                 <>
                   {focus && (
                     <div className="focus-line">
-                      <span>★ 当前专注</span>
+                      <span className="icon-text">
+                        <Star size={15} weight="fill" />
+                        当前专注
+                      </span>
                       <button onClick={() => edit(focus)}>{focus.title}</button>
                       <button
                         aria-label="取消专注"
@@ -245,7 +293,7 @@ export function TaskPanel({
                           void act(focus.id, () => api.focus(null))
                         }
                       >
-                        ×
+                        <X size={16} />
                       </button>
                     </div>
                   )}
@@ -254,11 +302,21 @@ export function TaskPanel({
                       <Sprite
                         pet={snapshot.settings.pet}
                         still={snapshot.settings.reduceMotion}
+                        state={
+                          animation ??
+                          (isQuietTime(
+                            snapshot.settings.quietStart,
+                            snapshot.settings.quietEnd,
+                          )
+                            ? "rest"
+                            : "idle")
+                        }
                       />
                       <h2>今天有什么想完成的事？</h2>
                       <p>把它记下来，我陪你一点点完成。</p>
                       <button className="primary" onClick={() => edit()}>
-                        记下第一件事 ＋
+                        <Plus size={18} />
+                        记下第一件事
                       </button>
                     </div>
                   ) : (
@@ -292,11 +350,12 @@ export function TaskPanel({
                           className="text-button more"
                           onClick={() => setAll(!all)}
                         >
-                          {all ? "收起更多任务" : "查看全部待办 ↓"}
+                          {all ? "收起更多任务" : "查看全部待办"}
+                          <ArrowDown size={15} />
                         </button>
                       )}
                       <div className="gentle-note">
-                        <span>✦</span>
+                        <Sparkle size={20} weight="duotone" />
                         <p>
                           {groups.overdue.length
                             ? "先照顾到期的事，也给自己留一点余地。"
@@ -344,7 +403,16 @@ export function TaskPanel({
         </div>
         <footer className="companions">
           <div className="footer-label">
-            换个伙伴<span>随时陪你</span>
+            换个伙伴
+            <button
+              className="text-button icon-text"
+              aria-label="试试动作"
+              aria-expanded={showActions}
+              onClick={() => setShowActions(!showActions)}
+            >
+              <Play size={16} />
+              试试动作
+            </button>
           </div>
           <div className="pet-options">
             {pets.map((p) => (
@@ -357,11 +425,49 @@ export function TaskPanel({
                   void act("pet", () => api.preferences({ pet: p.id }))
                 }
               >
-                <Sprite pet={p.id} still={true} />
+                <Sprite
+                  pet={p.id}
+                  state={
+                    snapshot.settings.pet === p.id
+                      ? (animation ?? "idle")
+                      : "idle"
+                  }
+                  still={
+                    snapshot.settings.pet !== p.id ||
+                    !animation ||
+                    snapshot.settings.reduceMotion
+                  }
+                />
                 <span>{p.name}</span>
               </button>
             ))}
           </div>
+          {showActions && (
+            <div className="animation-controls" aria-label="动作预览">
+              {(
+                [
+                  { id: "idle", label: "待机" },
+                  { id: "reminder", label: "提醒" },
+                  { id: "celebrate", label: "庆祝" },
+                  { id: "rest", label: "休息" },
+                ] as const
+              ).map((a) => (
+                <button
+                  key={a.id}
+                  aria-label={`预览${a.label}`}
+                  className={animation === a.id ? "active" : ""}
+                  onClick={() => void preview(a.id, a.label)}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {previewStatus && (
+            <p className="preview-status" role="status">
+              {previewStatus} · 5秒后恢复
+            </p>
+          )}
         </footer>
       </div>
     </div>

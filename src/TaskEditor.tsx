@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowLeft, Check, CalendarBlank } from "@phosphor-icons/react";
 import type { Task, TaskInput } from "./types";
 import { message } from "./api";
 export function TaskEditor({
@@ -10,8 +11,14 @@ export function TaskEditor({
   onSave: (input: TaskInput) => Promise<unknown>;
   onClose: () => void;
 }) {
-  const [title, setTitle] = useState(task?.title ?? "");
-  const [description, setDescription] = useState(task?.description ?? "");
+  const initial = task
+    ? task.description
+      ? task.description.startsWith(task.title)
+        ? task.description
+        : `${task.title}\n\n${task.description}`
+      : task.title
+    : "";
+  const [text, setText] = useState(initial);
   const [priority, setPriority] = useState<Task["priority"]>(
     task?.priority ?? "med",
   );
@@ -20,14 +27,16 @@ export function TaskEditor({
   const [error, setError] = useState("");
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) return;
+    const content = text.trim();
+    if (!content) return;
     setSaving(true);
     setError("");
+    const title = Array.from(content.split(/\r?\n/)[0]).slice(0, 200).join("");
     try {
       await onSave({
         id: task?.id,
         title,
-        description,
+        description: content === title ? "" : content,
         priority,
         dueDate: date || null,
         status: task?.status ?? "todo",
@@ -43,36 +52,35 @@ export function TaskEditor({
     <form className="editor" onSubmit={submit}>
       <div className="section-heading">
         <h2>{task ? "编辑任务" : "记下一件事"}</h2>
-        <button type="button" className="text-button" onClick={onClose}>
+        <button
+          type="button"
+          className="text-button icon-text"
+          onClick={onClose}
+        >
+          <ArrowLeft size={16} />
           返回
         </button>
       </div>
-      <label>
-        任务名称
-        <input
-          aria-label="任务名称"
+      <label className="task-content-label">
+        任务内容
+        <textarea
+          className="task-input"
+          aria-label="任务内容"
           autoFocus
-          maxLength={200}
-          placeholder="比如：整理本周的工作进度"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          maxLength={10000}
+          rows={5}
+          placeholder="写下要做的事，一段话就够了…"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
           required
         />
       </label>
-      <label>
-        补充说明
-        <textarea
-          aria-label="补充说明"
-          maxLength={10000}
-          rows={4}
-          placeholder="想清楚下一步，也可以以后再补…"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </label>
-      <div className="field-row">
+      <div className="field-row task-details">
         <label>
-          截止日期
+          <span className="icon-text">
+            <CalendarBlank size={17} />
+            截止日期
+          </span>
           <input
             aria-label="截止日期"
             type="date"
@@ -80,18 +88,35 @@ export function TaskEditor({
             onChange={(e) => setDate(e.target.value)}
           />
         </label>
-        <label>
-          优先级
-          <select
+        <fieldset className="priority-field">
+          <legend>优先级</legend>
+          <div
+            role="radiogroup"
             aria-label="优先级"
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as Task["priority"])}
+            className="priority-options"
           >
-            <option value="high">优先处理</option>
-            <option value="med">正常安排</option>
-            <option value="low">有空再做</option>
-          </select>
-        </label>
+            {(
+              [
+                { value: "high", label: "高" },
+                { value: "med", label: "中" },
+                { value: "low", label: "低" },
+              ] as const
+            ).map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                role="radio"
+                aria-label={`${p.label}优先级`}
+                aria-checked={priority === p.value}
+                className={`priority-option priority-${p.value} ${priority === p.value ? "selected" : ""}`}
+                onClick={() => setPriority(p.value)}
+              >
+                <i />
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
       </div>
       {date && (
         <button
@@ -107,7 +132,11 @@ export function TaskEditor({
           {error}
         </p>
       )}
-      <button className="primary save" disabled={saving || !title.trim()}>
+      <button
+        className="primary save icon-text"
+        disabled={saving || !text.trim()}
+      >
+        <Check size={19} />
         {saving ? "正在保存…" : "保存任务"}
       </button>
       <p className="micro">只保存在这台电脑，无需登录。</p>

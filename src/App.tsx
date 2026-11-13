@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { Snapshot } from "./types";
+import type { Snapshot, VisualState } from "./types";
 import { api, message } from "./api";
 import { Pet } from "./Pet";
 import { TaskPanel } from "./TaskPanel";
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [error, setError] = useState("");
-  const [celebrating, setCelebrating] = useState(false);
-  const [notice, setNotice] = useState(false);
-  const [clock, setClock] = useState(0);
+  const [animation, setAnimation] = useState<VisualState | null>(null);
+  const animationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [, setClock] = useState(0);
   const [notificationWarning, setNotificationWarning] = useState("");
   const refresh = useCallback(async () => {
     setSnapshot(await api.snapshot());
@@ -17,15 +17,29 @@ export function App() {
   useEffect(() => {
     let active = true;
     let unsub: (() => void)[] = [];
+    const play = (state: VisualState, duration = 5000) => {
+      if (animationTimer.current) clearTimeout(animationTimer.current);
+      setAnimation(state);
+      animationTimer.current = setTimeout(() => setAnimation(null), duration);
+    };
     const register = async () => {
       for (const [event, fn] of [
+        [
+          "preview-animation",
+          (state: unknown) => {
+            if (
+              typeof state === "string" &&
+              ["idle", "reminder", "celebrate", "rest"].includes(state)
+            )
+              play(state as VisualState);
+          },
+        ],
         ["snapshot", (s: Snapshot) => setSnapshot(s)],
         ["clock", () => setClock((c) => c + 1)],
         [
           "celebrate",
           () => {
-            setCelebrating(true);
-            setTimeout(() => setCelebrating(false), 4000);
+            play("celebrate", 4000);
           },
         ],
         [
@@ -44,8 +58,7 @@ export function App() {
         [
           "reminder",
           () => {
-            setNotice(true);
-            setTimeout(() => setNotice(false), 10000);
+            play("reminder", 10000);
           },
         ],
       ] as const) {
@@ -73,6 +86,7 @@ export function App() {
     void register();
     return () => {
       active = false;
+      if (animationTimer.current) clearTimeout(animationTimer.current);
       unsub.forEach((off) => off());
     };
   }, [refresh]);
@@ -97,12 +111,13 @@ export function App() {
       </div>
     );
   return pet ? (
-    <Pet snapshot={snapshot} celebrating={celebrating} notice={notice} />
+    <Pet snapshot={snapshot} animation={animation} />
   ) : (
     <TaskPanel
       snapshot={snapshot}
       onSnapshot={setSnapshot}
       notificationWarning={notificationWarning}
+      animation={animation}
     />
   );
 }
