@@ -1278,3 +1278,8 @@ button:not(:disabled):active { opacity: .75; }
 
 .export-card > button { margin-top: 12px; width: 100%; justify-content: center; }
 .export-card > p[role] { overflow-wrap: anywhere; }
+
+.task-title-line { display: flex; align-items: center; gap: 8px; }
+.task-title-line > .task-title { flex: 1; min-width: 0; }
+.task-delete { display: flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0; flex-shrink: 0; color: var(--muted); }
+.task-delete:not(:disabled):hover { color: var(--red); background: var(--danger-bg); clip-path: var(--pixel-cut); }

@@ -1,4 +1,5 @@
 import {
+  Trash,
   GearSix,
   Minus,
   Plus,
@@ -136,9 +137,10 @@ export function TaskPanel({
           ) : null}
         </button>
         <div className="task-copy">
-          <button className="task-title" title={task.title} onClick={() => edit(task)}>
-            {task.title}
-          </button>
+          <div className="task-title-line">
+            <button className="task-title" title={task.title} onClick={() => edit(task)}>{task.title}</button>
+            <button className="task-delete" aria-label={`删除任务 ${task.title}`} title="删除任务" disabled={busy === task.id} onClick={() => void act(task.id, () => api.deleteTask(task.id))}><Trash size={17} /></button>
+          </div>
           <div className="task-bottom">
           <div className="task-meta">
             <span>

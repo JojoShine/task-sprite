@@ -255,6 +255,20 @@ impl Store {
         tx.commit().map_err(err)?;
         Ok(t)
     }
+    pub fn delete_task(&mut self, id: &str) -> Result<()> {
+        let mut settings = self.snapshot()?.settings;
+        let tx = self.conn.transaction().map_err(err)?;
+        tx.execute("DELETE FROM snoozes WHERE task_id=?1", [id]).map_err(err)?;
+        tx.execute("DELETE FROM deadline_delivered WHERE task_id=?1", [id]).map_err(err)?;
+        if tx.execute("DELETE FROM tasks WHERE id=?1", [id]).map_err(err)? == 0 {
+            return Err("任务不存在".into());
+        }
+        if settings.focus_id.as_deref() == Some(id) {
+            settings.focus_id = None;
+            tx.execute("UPDATE settings SET payload=?1 WHERE id=1", [serde_json::to_string(&settings).map_err(err)?]).map_err(err)?;
+        }
+        tx.commit().map_err(err)
+    }
     pub fn set_settings(&mut self, s: Settings) -> Result<()> {
         if !["system", "light", "dark"].contains(&s.theme.as_str()) {
             return Err("请选择跟随系统、浅色或深色主题".into());

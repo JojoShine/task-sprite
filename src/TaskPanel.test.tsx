@@ -11,7 +11,7 @@ import { TaskPanel } from "./TaskPanel";
 import { api } from "./api";
 import type { Snapshot } from "./types";
 vi.mock("./api", () => ({
-  api: { save: vi.fn(), preview: vi.fn() },
+  api: { save: vi.fn(), preview: vi.fn(), deleteTask: vi.fn() },
   message: (e: unknown) => String(e),
 }));
 const snapshot: Snapshot = {
@@ -134,4 +134,29 @@ it("reserves pagination height before fitting task cards", () => {
   render(<TaskPanel snapshot={{ ...snapshot, tasks }} onSnapshot={() => {}} />);
   expect(screen.getAllByRole("button", { name: /^完成 / })).toHaveLength(1);
   expect(screen.getByText("1 / 3")).toBeTruthy();
+});
+
+
+for (const status of ["todo", "completed"] as const) it(`directly deletes a ${status} task without a recovery view`, async () => {
+  const task = { id: "remove", title: "直接删除的任务", description: "", priority: "med" as const, status, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: status === "completed" ? "2026-11-13" : null };
+  vi.mocked(api.deleteTask).mockResolvedValue(snapshot);
+  const changed = vi.fn();
+  const { rerender } = render(<TaskPanel snapshot={{ ...snapshot, tasks: [task] }} onSnapshot={changed} />);
+  if (status === "completed") fireEvent.click(screen.getByRole("button", { name: "已完成 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "删除任务 直接删除的任务" }));
+  await waitFor(() => expect(changed).toHaveBeenCalledWith(snapshot));
+  expect(api.deleteTask).toHaveBeenCalledWith(task.id);
+  rerender(<TaskPanel snapshot={snapshot} onSnapshot={changed} />);
+  expect(screen.queryByRole("button", { name: task.title })).toBeNull();
+  expect(screen.queryByRole("button", { name: /最近删除/ })).toBeNull();
+});
+it("keeps a task visible and shows an error if deleting fails", async () => {
+  const task = { id: "failure", title: "暂时无法删除", description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  vi.mocked(api.deleteTask).mockRejectedValue(new Error("删除失败"));
+  const changed = vi.fn();
+  render(<TaskPanel snapshot={{ ...snapshot, tasks: [task] }} onSnapshot={changed} />);
+  fireEvent.click(screen.getByRole("button", { name: "删除任务 暂时无法删除" }));
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("删除失败"));
+  expect(changed).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: task.title })).toBeTruthy();
 });

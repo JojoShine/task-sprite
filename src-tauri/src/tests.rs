@@ -523,3 +523,41 @@ fn tray_panel_collision_is_detected_only_near_the_character() {
     assert!(panel_clear_of_pet(panel, Rect { x: 100., ..top_pet }));
     assert!(panel_clear_of_pet(panel, Rect { y: 700., ..top_pet }));
 }
+
+
+#[test]
+fn deleting_a_task_permanently_clears_its_focus_and_reminders_across_restart() {
+    let d = tempfile::tempdir().unwrap(); let path = d.path().join("delete.db");
+    let mut s = Store::open(&path).unwrap();
+    let mut i = input("直接删除的任务", Some("2026-11-13")); i.due_time = Some("17:00".into());
+    let task = s.save_task(i).unwrap();
+    s.set_focus(Some(task.id.clone())).unwrap();
+    s.snooze(&task.id, 30, now("2026-11-13 08:00")).unwrap();
+    s.conn.execute("INSERT INTO deadline_delivered VALUES(?1,?2)", rusqlite::params![task.id,"2026-11-13T17:00"]).unwrap();
+    s.delete_task(&task.id).unwrap();
+    assert!(s.snapshot().unwrap().tasks.is_empty());
+    assert_eq!(s.snapshot().unwrap().settings.focus_id, None);
+    assert!(s.snoozes().unwrap().is_empty());
+    assert!(!s.deadline_delivered(&task.id, "2026-11-13T17:00").unwrap());
+    assert!(plan(&s, now("2026-11-13 18:00")).unwrap().is_none());
+    assert!(!crate::export::tasks_csv(&s.snapshot().unwrap()).contains(&task.id));
+    assert_eq!(s.conn.query_row("SELECT COUNT(*) FROM tasks",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+    drop(s);
+    assert!(Store::open(&path).unwrap().snapshot().unwrap().tasks.is_empty());
+}
+#[test]
+fn deleting_completed_tasks_leaves_other_tasks_and_their_reminders_unchanged() {
+    let mut s = Store::memory().unwrap();
+    let mut i = input("完成后直接删除", None); i.status = "completed".into();
+    let done = s.save_task(i).unwrap();
+    let remaining = s.save_task(input("保留这条任务", None)).unwrap();
+    s.set_focus(Some(remaining.id.clone())).unwrap();
+    s.snooze(&remaining.id, 30, now("2026-11-13 10:00")).unwrap();
+    s.delete_task(&done.id).unwrap();
+    assert!(s.delete_task("missing").is_err());
+    let snap = s.snapshot().unwrap();
+    assert_eq!(snap.tasks.len(),1);
+    assert_eq!(serde_json::to_value(&snap.tasks[0]).unwrap(),serde_json::to_value(&remaining).unwrap());
+    assert_eq!(snap.settings.focus_id, Some(remaining.id));
+    assert_eq!(s.snoozes().unwrap().len(),1);
+}

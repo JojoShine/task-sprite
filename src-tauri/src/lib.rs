@@ -50,6 +50,13 @@ fn save_task(app: tauri::AppHandle, input: TaskInput) -> Result<Snapshot> {
     broadcast(&app, &s)
 }
 #[tauri::command]
+fn delete_task(app: tauri::AppHandle, id: String) -> Result<Snapshot> {
+    let state = locked(&app)?;
+    let mut store = state.0.lock().map_err(|_| "数据库暂不可用")?;
+    store.delete_task(&id)?;
+    broadcast(&app, &store)
+}
+#[tauri::command]
 async fn export_tasks(app: tauri::AppHandle) -> Result<Option<String>> {
     let snapshot = {
         let state = locked(&app)?;
@@ -416,6 +423,7 @@ pub fn run() {
             get_snapshot,
             get_local_identity,
             save_task,
+            delete_task,
             export_tasks,
             update_preferences,
             set_focus,
