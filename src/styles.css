@@ -1182,7 +1182,8 @@ button:not(:disabled):active { opacity: .75; }
 .speech.is-overdue { border-color: var(--red); }
 .speech.is-overdue::after { border-color: var(--red); }
 .speech.is-overdue .speech-content > span,
-.speech.is-overdue .speech-content > small { color: var(--red); }
+.speech.is-overdue .speech-content > small,
+.speech.is-overdue .bubble-pager > span { color: var(--red); }
 
 /* Compact three-task pages; forms and settings retain their own scroll area. */
 .panel-content.paged-view { container-type: size; display: flex; flex-direction: column; overflow: hidden; overscroll-behavior: none; }
