@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { ArrowLeft, Check, CalendarBlank } from "@phosphor-icons/react";
+import { ArrowLeft, Check } from "@phosphor-icons/react";
 import type { Task, TaskInput } from "./types";
 import { message } from "./api";
+import { DatePicker } from "./DatePicker";
 export function TaskEditor({
   task,
   onSave,
@@ -68,7 +69,7 @@ export function TaskEditor({
           aria-label="任务内容"
           autoFocus
           maxLength={10000}
-          rows={5}
+          rows={2}
           placeholder="写下要做的事，一段话就够了…"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -76,18 +77,10 @@ export function TaskEditor({
         />
       </label>
       <div className="field-row task-details">
-        <label>
-          <span className="icon-text">
-            <CalendarBlank size={17} />
-            截止日期
-          </span>
-          <input
-            aria-label="截止日期"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </label>
+        <div className="date-field">
+          <span className="field-caption">截止日期</span>
+          <DatePicker value={date} onChange={setDate} />
+        </div>
         <fieldset className="priority-field">
           <legend>优先级</legend>
           <div
@@ -118,15 +111,6 @@ export function TaskEditor({
           </div>
         </fieldset>
       </div>
-      {date && (
-        <button
-          className="text-button clear-date"
-          type="button"
-          onClick={() => setDate("")}
-        >
-          清除截止日期
-        </button>
-      )}
       {error && (
         <p role="alert" className="error">
           {error}
@@ -139,7 +123,6 @@ export function TaskEditor({
         <Check size={19} />
         {saving ? "正在保存…" : "保存任务"}
       </button>
-      <p className="micro">只保存在这台电脑，无需登录。</p>
     </form>
   );
 }

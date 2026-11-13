@@ -705,11 +705,13 @@ h3 {
   gap: 10px;
 }
 .task-input {
-  min-height: 142px;
+  min-height: 78px;
+  height: 82px;
+  max-height: 100px;
   line-height: 1.7;
   font-size: 17px;
   resize: none;
-  padding: 14px;
+  padding: 10px 12px;
   border-radius: 5px;
   scrollbar-width: none;
 }
@@ -925,4 +927,212 @@ textarea:focus {
 }
 .task-details > label > .icon-text {
   justify-content: flex-start;
+}
+
+.date-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.field-caption {
+  font-size: 14px;
+  color: #78756a;
+}
+.date-trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: 5px;
+  background: #f5f2e8;
+  border-bottom: 1px solid #d8d3c5;
+  font-size: 14px;
+  color: #787163;
+  white-space: nowrap;
+}
+.date-trigger > span {
+  flex: 1;
+  text-align: left;
+}
+.date-trigger.has-date {
+  color: #526b36;
+}
+.date-trigger:hover {
+  background: #edeadb;
+}
+.calendar-popover {
+  position: fixed;
+  z-index: 30;
+  padding: 12px;
+  background: #fffdf5;
+  border: 1px solid #ddd7c8;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px #51472d22;
+  color: #38372f;
+  font-size: 14px;
+}
+.calendar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+.calendar-heading strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.calendar-heading button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+}
+.calendar-heading button:hover {
+  background: #eeeadd;
+}
+.calendar-week,
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.calendar-week {
+  font-size: 12px;
+  text-align: center;
+  color: #938c7b;
+  margin-bottom: 6px;
+}
+.calendar-week span {
+  line-height: 22px;
+}
+.calendar-days button {
+  height: 30px;
+  font-size: 14px;
+  border-radius: 5px;
+  padding: 0;
+  font-variant-numeric: tabular-nums;
+}
+.calendar-days button[data-outside="true"] {
+  color: #b4ad9e;
+}
+.calendar-days button[data-today="true"] {
+  box-shadow: inset 0 0 0 1px #b1bd93;
+  color: #526b36;
+}
+.calendar-days button:hover {
+  background: #ecefdc;
+}
+.calendar-days button[aria-pressed="true"] {
+  background: #61783c;
+  color: #fffdf5;
+  box-shadow: none;
+}
+.calendar-shortcuts {
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid #e5e0d3;
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.calendar-shortcuts button {
+  flex: 1;
+  padding: 6px 0;
+  color: #61783c;
+  background: #f1eee3;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.sprite[data-activity="peek"]:not(.still) {
+  transform-origin: 50% 80%;
+  animation:
+    frames 3s steps(1, end) infinite,
+    pet-peek 1.8s ease-in-out 1;
+}
+.sprite[data-activity="wave"]:not(.still) {
+  transform-origin: 50% 90%;
+  animation:
+    frames 0.8s steps(1, end) infinite,
+    pet-wave 1.8s ease-in-out 1;
+}
+.sprite[data-activity="stretch"]:not(.still) {
+  transform-origin: 50% 85%;
+  animation:
+    frames 1.8s steps(1, end) infinite,
+    pet-stretch 1.8s ease-in-out 1;
+}
+.sprite[data-activity="settle"]:not(.still) {
+  animation:
+    frames 2s steps(1, end) infinite,
+    rest-breathe 2s ease-in-out 1;
+}
+.sprite[data-activity="tap"]:not(.still) {
+  transform-origin: 50% 85%;
+  animation:
+    frames 0.7s steps(1, end) infinite,
+    pet-tap 0.7s ease-out 1;
+}
+@keyframes pet-peek {
+  0%,
+  100% {
+    transform: rotate(0) translateX(0);
+  }
+  30%,
+  55% {
+    transform: rotate(-3deg) translateX(-2px);
+  }
+  75% {
+    transform: rotate(2deg) translateX(1px);
+  }
+}
+@keyframes pet-wave {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25%,
+  65% {
+    transform: rotate(-3deg);
+  }
+  45%,
+  80% {
+    transform: rotate(2deg);
+  }
+}
+@keyframes pet-stretch {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+  }
+  40%,
+  65% {
+    transform: scale(0.98, 1.05) translateY(-3px);
+  }
+}
+@keyframes pet-tap {
+  0% {
+    transform: scale(1);
+  }
+  20% {
+    transform: scale(1.08, 0.92);
+  }
+  50% {
+    transform: scale(0.98, 1.04) translateY(-5px);
+  }
+  75% {
+    transform: scale(1.02, 0.98);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sprite[data-activity]:not(.still) {
+    animation: none;
+  }
 }

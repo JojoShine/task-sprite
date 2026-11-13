@@ -16,8 +16,8 @@ pub fn clamp(r: Rect, a: Rect) -> Rect {
     }
 }
 pub fn panel_position(p: Rect, a: Rect) -> Rect {
-    let w = 460.;
-    let h = 700.;
+    let w = 440.;
+    let h = 620.;
     let x = if p.x + p.w + 12. + w <= a.x + a.w {
         p.x + p.w + 12.
     } else {

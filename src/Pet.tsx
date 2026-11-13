@@ -3,6 +3,7 @@ import { createDragSession } from "./drag";
 import type { PetId, VisualState, Snapshot } from "./types";
 import { groupTasks, isQuietTime } from "./domain";
 import { api } from "./api";
+import { usePetMotion, type PetActivity } from "./usePetMotion";
 export const pets: {
   id: PetId;
   name: string;
@@ -16,15 +17,18 @@ export function Sprite({
   pet,
   state = "idle",
   still = false,
+  activity,
 }: {
   pet: PetId;
   state?: VisualState;
   still?: boolean;
+  activity?: PetActivity | null;
 }) {
   return (
     <span
       aria-hidden="true"
       data-state={state}
+      data-activity={activity ?? undefined}
       className={`sprite ${still ? "still" : ""}`}
       style={{
         backgroundImage: `url(/pets/${pet}.png)`,
@@ -46,8 +50,22 @@ export function Pet({
   const focus = ordered.find((t) => t.id === s.focusId) ?? ordered[0];
   const drag = useRef<ReturnType<typeof createDragSession> | null>(null);
   const [dragError, setDragError] = useState("");
+  const quiet = isQuietTime(s.quietStart, s.quietEnd);
+  const motion = usePetMotion({
+    blocked: Boolean(animation) || quiet,
+    reduced: s.reduceMotion,
+    pet: s.pet,
+  });
+  const pose: Record<PetActivity, VisualState> = {
+    peek: "idle",
+    wave: "reminder",
+    stretch: "celebrate",
+    settle: "rest",
+    tap: "celebrate",
+  };
   const state: VisualState =
-    animation ?? (isQuietTime(s.quietStart, s.quietEnd) ? "rest" : "idle");
+    animation ??
+    (motion.activity ? pose[motion.activity] : quiet ? "rest" : "idle");
   return (
     <div
       className="pet-view"
@@ -56,14 +74,15 @@ export function Pet({
         void api.toggle();
       }}
     >
-      {s.showHint && (
+      {(s.showHint || motion.caption) && (
         <button className="speech" onClick={() => void api.toggle()}>
           <span>
-            {state === "celebrate"
-              ? "给自己一点掌声，继续加油。"
-              : focus
-                ? `${s.focusId ? "当前专注" : "接下来"}：${focus.title}`
-                : "今天，有什么想完成的事？"}
+            {motion.caption ??
+              (animation === "celebrate"
+                ? "给自己一点掌声，继续加油。"
+                : focus
+                  ? `${s.focusId ? "当前专注" : "接下来"}：${focus.title}`
+                  : "今天，有什么想完成的事？")}
           </span>
           <small>
             {groups.overdue.length
@@ -73,7 +92,7 @@ export function Pet({
         </button>
       )}
       <button
-        aria-label="打开任务面板，拖动可移动精灵"
+        aria-label="点击互动，双击打开任务面板，拖动可移动精灵"
         className="pet-drag"
         onPointerDown={(e) => {
           if (e.button !== 0) return;
@@ -98,10 +117,23 @@ export function Pet({
           e.currentTarget.releasePointerCapture(e.pointerId);
         }}
         onClick={(e) => {
-          if (e.detail === 0 || !drag.current?.moved) void api.toggle();
+          if (e.detail === 0 || !drag.current?.moved) motion.interact();
+        }}
+        onDoubleClick={() => void api.toggle()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void api.toggle();
+          }
         }}
       >
-        <Sprite pet={s.pet} state={state} still={s.reduceMotion} />
+        <Sprite
+          key={motion.sequence}
+          pet={s.pet}
+          state={state}
+          activity={animation ? null : motion.activity}
+          still={s.reduceMotion}
+        />
       </button>
       <span className="pet-count">
         待办 {ordered.length}

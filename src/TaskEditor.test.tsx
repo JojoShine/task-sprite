@@ -37,9 +37,14 @@ it("saves one text field with direct priority selection and a deadline", async (
   fireEvent.change(screen.getByLabelText("任务内容"), {
     target: { value: "整理今天的会议记录\n补齐结论和下一步安排" },
   });
-  fireEvent.change(screen.getByLabelText("截止日期"), {
-    target: { value: "2026-11-15" },
-  });
+  const today = new Date();
+  const expectedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-15`;
+  fireEvent.click(screen.getByRole("button", { name: "选择截止日期" }));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: `${today.getFullYear()}年${today.getMonth() + 1}月15日`,
+    }),
+  );
   fireEvent.click(screen.getByRole("radio", { name: "高优先级" }));
   fireEvent.click(screen.getByRole("button", { name: "保存任务" }));
   await waitFor(() =>
@@ -48,7 +53,7 @@ it("saves one text field with direct priority selection and a deadline", async (
         title: "整理今天的会议记录",
         description: "整理今天的会议记录\n补齐结论和下一步安排",
         priority: "high",
-        dueDate: "2026-11-15",
+        dueDate: expectedDate,
       }),
     ),
   );
