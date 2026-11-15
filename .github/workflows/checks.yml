@@ -1,0 +1,80 @@
+name: Desktop tests (no packages)
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    name: Test-only / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Prepare original macOS credential agent for native tests
+        if: runner.os == 'macOS'
+        run: node scripts/prepare-ci-macos.mjs
+      - name: Frontend behavior tests
+        shell: bash
+        run: |
+          mkdir -p ci-logs
+          set -o pipefail
+          npm test 2>&1 | tee ci-logs/frontend-tests.log
+      - name: Frontend type check and build (test assets only)
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee ci-logs/frontend-build.log
+      - name: Native behavior tests (real platform storage on Windows)
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path src-tauri/Cargo.toml -- --nocapture 2>&1 | tee ci-logs/native-tests.log
+      - name: Compile debug application only
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo build --locked --manifest-path src-tauri/Cargo.toml 2>&1 | tee ci-logs/debug-build.log
+      - name: Windows debug UI test (Vite, native window and screenshot)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $vite = Start-Process node -ArgumentList @("node_modules/vite/bin/vite.js", "--host", "127.0.0.1") -PassThru -RedirectStandardOutput ci-logs/vite.stdout.log -RedirectStandardError ci-logs/vite.stderr.log
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              Start-Sleep -Seconds 1
+              $vite.Refresh()
+              if ($vite.HasExited) { throw "Vite exited before the debug UI test" }
+              try {
+                $page = Invoke-WebRequest http://127.0.0.1:1420/ -TimeoutSec 2
+                if ($page.Content -match '/src/main.tsx') { $ready = $true; break }
+              } catch { }
+            }
+            if (-not $ready) { throw "Vite did not serve the application entry point" }
+            ./scripts/smoke-windows.ps1 -Executable src-tauri/target/debug/task-sprite.exe -DebugWebview
+          } finally {
+            if (-not $vite.HasExited) { Stop-Process -Id $vite.Id -Force }
+          }
+      - name: Test evidence only (no distributable)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-test-evidence-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          retention-days: 14
+          path: ci-logs/

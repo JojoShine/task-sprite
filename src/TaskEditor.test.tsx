@@ -109,3 +109,32 @@ it("fits the loaded task text and shrinks again after shortening it", () => {
   fireEvent.click(screen.getByRole("button", { name: "返回任务编辑" }));
   expect(parseFloat((screen.getByLabelText("任务内容") as HTMLTextAreaElement).style.height)).toBeGreaterThanOrEqual(164);
 });
+
+it("shows recorded start, completion and fixed elapsed time without editing them", () => {
+  render(<TaskEditor task={{ id: "timed", title: "计时任务", description: "", priority: "med", status: "completed", dueDate: null, dueTime: null, createdAt: "2026-11-13T00:00:00Z", updatedAt: "2026-11-13T02:02:03Z", startedAt: "2026-11-13T01:00:00Z", completedAt: "2026-11-13T02:02:03Z" }} onSave={vi.fn()} onClose={vi.fn()} />);
+  const timing = screen.getByLabelText("任务时间记录");
+  expect(timing.textContent).toContain("开始时间");
+  expect(timing.textContent).toContain("完成时间");
+  expect(timing.textContent).toContain("1小时2分");
+});
+it('keeps the content behind a deadline bottom sheet and persists the work or life label',async()=>{
+ const save=vi.fn(async()=>{});render(<TaskEditor onSave={save} onClose={()=>{}}/>);
+ fireEvent.change(screen.getByLabelText('任务内容'),{target:{value:'shopping'}});
+ fireEvent.click(screen.getByRole('radio',{name:'生活标签'}));
+ fireEvent.click(screen.getByRole('button',{name:'选择截止时间'}));
+ expect(screen.getByRole('dialog',{name:'选择截止时间'})).toBeTruthy();
+ expect((screen.getByLabelText('任务内容') as HTMLTextAreaElement).value).toBe('shopping');
+ fireEvent.click(screen.getByRole('button',{name:'返回任务编辑'}));
+ fireEvent.click(screen.getByRole('button',{name:'保存任务'}));
+ await waitFor(()=>expect(save).toHaveBeenCalledWith(expect.objectContaining({category:'life',title:'shopping'})));
+});
+
+it("shows every saved state transition in expandable history", () => {
+  const task={id:"history",title:"保留历史",description:"",priority:"med" as const,status:"todo" as const,dueDate:null,dueTime:null,createdAt:"2026-11-14T00:00:00Z",updatedAt:"2026-11-14T02:00:00Z",startedAt:"2026-11-14T01:00:00Z",completedAt:null,activityLog:[{id:"1",action:"started" as const,at:"2026-11-14T01:00:00Z"},{id:"2",action:"paused" as const,at:"2026-11-14T01:10:00Z"}]};
+  render(<TaskEditor task={task} onSave={vi.fn()} onClose={vi.fn()}/>);
+  const history=screen.getByLabelText("任务状态记录");
+  expect(history.querySelectorAll("li")).toHaveLength(2);
+  expect(history.textContent).toContain("开始做");
+  expect(history.textContent).toContain("暂停");
+  expect(screen.getByLabelText("任务时间记录").textContent).toContain("10分");
+});

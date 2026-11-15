@@ -3,6 +3,19 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::{path::Path, time::Duration};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityEvent {
+    pub id: String,
+    pub action: String,
+    pub at: String,
+}
+impl ActivityEvent {
+    pub fn new(action: &str, at: &str) -> Self {
+        Self { id: uuid::Uuid::new_v4().to_string(), action: action.into(), at: at.into() }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, String>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -10,6 +23,8 @@ pub struct Task {
     pub id: String,
     pub title: String,
     pub description: String,
+    #[serde(default)]
+    pub category: Option<String>,
     pub priority: String,
     pub status: String,
     pub due_date: Option<String>,
@@ -18,6 +33,10 @@ pub struct Task {
     pub created_at: String,
     pub updated_at: String,
     pub completed_at: Option<String>,
+    #[serde(default)]
+    pub started_at: Option<String>,
+    #[serde(default)]
+    pub activity_log: Vec<ActivityEvent>,
 }
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -25,6 +44,8 @@ pub struct TaskInput {
     pub id: Option<String>,
     pub title: String,
     pub description: String,
+    #[serde(default)]
+    pub category: Option<String>,
     pub priority: String,
     pub status: String,
     pub due_date: Option<String>,
@@ -69,6 +90,8 @@ impl Default for Settings {
 }
 #[derive(Debug, Serialize)]
 pub struct Snapshot {
+    #[serde(rename = "looksExpiresAt")]
+    pub looks_expires_at: Option<String>,
     pub tasks: Vec<Task>,
     pub settings: Settings,
 }
@@ -91,10 +114,10 @@ impl Store {
         let version: i64 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .map_err(err)?;
-        if version > 2 {
+        if version > 5 {
             return Err("数据版本高于当前应用，请使用新版应用打开".into());
         }
-        if version < 2 && existed {
+        if version < 5 && existed {
             let mut backup = Connection::open(
                 path.with_extension(format!("backup-{}.db", Utc::now().timestamp_millis())),
             )
@@ -122,6 +145,11 @@ impl Store {
             tx.execute_batch("ALTER TABLE tasks ADD COLUMN due_time TEXT;")
                 .map_err(err)?;
         }
+        if version < 3 {
+            tx.execute_batch("ALTER TABLE tasks ADD COLUMN started_at TEXT;").map_err(err)?;
+        }
+        if version < 4 { tx.execute_batch("ALTER TABLE tasks ADD COLUMN category TEXT;").map_err(err)?; }
+        if version < 5 { tx.execute_batch("ALTER TABLE tasks ADD COLUMN activity_log TEXT NOT NULL DEFAULT '[]';").map_err(err)?; }
         tx.execute_batch("CREATE TABLE IF NOT EXISTS local_identity(id INTEGER PRIMARY KEY CHECK(id=1),user_id TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS deadline_delivered(task_id TEXT NOT NULL REFERENCES tasks(id),deadline TEXT NOT NULL,PRIMARY KEY(task_id,deadline));").map_err(err)?;
         tx.execute(
             "INSERT OR IGNORE INTO settings VALUES(1,?1)",
@@ -133,7 +161,7 @@ impl Store {
             params![uuid::Uuid::new_v4().to_string(), Utc::now().to_rfc3339()],
         )
         .map_err(err)?;
-        tx.pragma_update(None, "user_version", 2).map_err(err)?;
+        tx.pragma_update(None, "user_version", 5).map_err(err)?;
         tx.commit().map_err(err)?;
         Ok(Self { conn })
     }
@@ -152,7 +180,7 @@ impl Store {
             .map_err(err)
     }
     pub fn snapshot(&self) -> Result<Snapshot> {
-        let mut q=self.conn.prepare("SELECT id,title,description,priority,status,due_date,created_at,updated_at,completed_at,due_time FROM tasks ORDER BY created_at DESC,id").map_err(err)?;
+        let mut q=self.conn.prepare("SELECT id,title,description,priority,status,due_date,created_at,updated_at,completed_at,due_time,started_at,category,activity_log FROM tasks ORDER BY created_at DESC,id").map_err(err)?;
         let tasks = q
             .query_map([], |r| {
                 Ok(Task {
@@ -166,6 +194,9 @@ impl Store {
                     updated_at: r.get(7)?,
                     completed_at: r.get(8)?,
                     due_time: r.get(9)?,
+                    started_at: r.get(10)?,
+                    category: r.get(11)?,
+                    activity_log: serde_json::from_str(&r.get::<_,String>(12)?).map_err(|e|rusqlite::Error::FromSqlConversionFailure(12,rusqlite::types::Type::Text,Box::new(e)))?,
                 })
             })
             .map_err(err)?
@@ -176,35 +207,14 @@ impl Store {
             .query_row("SELECT payload FROM settings WHERE id=1", [], |r| r.get(0))
             .map_err(err)?;
         Ok(Snapshot {
+            looks_expires_at: self.looks_expires_at()?,
             tasks,
             settings: serde_json::from_str(&raw).map_err(err)?,
         })
     }
     pub fn save_task(&mut self, i: TaskInput) -> Result<Task> {
+        validate_task(&i)?;
         let title = i.title.trim();
-        if title.is_empty() || title.chars().count() > 200 {
-            return Err("任务名称需要 1–200 个字".into());
-        }
-        if i.description.chars().count() > 10000 {
-            return Err("任务描述过长".into());
-        }
-        if !["high", "med", "low"].contains(&i.priority.as_str())
-            || !["todo", "completed"].contains(&i.status.as_str())
-        {
-            return Err("任务状态或优先级无效".into());
-        }
-        if let Some(d) = &i.due_date {
-            if d.len() != 10 || NaiveDate::parse_from_str(d, "%Y-%m-%d").is_err() {
-                return Err("截止日期无效".into());
-            }
-        }
-        if i.due_time
-            .as_deref()
-            .is_some_and(|t| !["12:00", "17:00"].contains(&t))
-            || (i.due_time.is_some() && i.due_date.is_none())
-        {
-            return Err("请选择上午或下午的截止时间".into());
-        }
         let snapshot = self.snapshot()?;
         let old = if let Some(id) = &i.id {
             Some(
@@ -218,6 +228,12 @@ impl Store {
             None
         };
         let now = Utc::now().to_rfc3339();
+        let mut activity_log = old.map(|t| t.activity_log.clone()).unwrap_or_default();
+        if old.map(|t|t.status.as_str()) != Some(i.status.as_str()) {
+            if let Some(task) = old { seed_history(task, &mut activity_log); }
+            if i.status == "completed" { activity_log.push(ActivityEvent::new("completed", &now)); }
+            else if old.is_some() { activity_log.push(ActivityEvent::new("reopened", &now)); }
+        }
         let t = Task {
             id: i
                 .id
@@ -225,12 +241,15 @@ impl Store {
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
             title: title.into(),
             description: i.description,
+            category: i.category,
             priority: i.priority,
             status: i.status.clone(),
             due_date: i.due_date,
             due_time: i.due_time,
             created_at: old.map(|t| t.created_at.clone()).unwrap_or(now.clone()),
             updated_at: now.clone(),
+            started_at: old.and_then(|t| t.started_at.clone()),
+            activity_log,
             completed_at: if i.status == "completed" {
                 Some(old.and_then(|t| t.completed_at.clone()).unwrap_or(now))
             } else {
@@ -238,7 +257,7 @@ impl Store {
             },
         };
         let tx = self.conn.transaction().map_err(err)?;
-        tx.execute("INSERT INTO tasks(id,title,description,priority,status,due_date,created_at,updated_at,completed_at,due_time) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,priority=excluded.priority,status=excluded.status,due_date=excluded.due_date,due_time=excluded.due_time,updated_at=excluded.updated_at,completed_at=excluded.completed_at",params![t.id,t.title,t.description,t.priority,t.status,t.due_date,t.created_at,t.updated_at,t.completed_at,t.due_time]).map_err(err)?;
+        tx.execute("INSERT INTO tasks(id,title,description,priority,status,due_date,created_at,updated_at,completed_at,due_time,started_at,category,activity_log) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,priority=excluded.priority,status=excluded.status,due_date=excluded.due_date,due_time=excluded.due_time,updated_at=excluded.updated_at,completed_at=excluded.completed_at,started_at=excluded.started_at,category=excluded.category,activity_log=excluded.activity_log",params![t.id,t.title,t.description,t.priority,t.status,t.due_date,t.created_at,t.updated_at,t.completed_at,t.due_time,t.started_at,t.category,serde_json::to_string(&t.activity_log).map_err(err)?]).map_err(err)?;
         if t.status == "completed" {
             tx.execute("DELETE FROM snoozes WHERE task_id=?1", [&t.id])
                 .map_err(err)?;
@@ -254,6 +273,14 @@ impl Store {
         }
         tx.commit().map_err(err)?;
         Ok(t)
+    }
+    pub fn save_tasks(&mut self, inputs:Vec<TaskInput>) -> Result<()> {
+        if inputs.is_empty() || inputs.len()>30 {return Err("每次请选择1–30项任务".into());}
+        for input in &inputs {validate_task(input)?;if input.id.is_some()||input.status!="todo"{return Err("批量添加仅支持新待办任务".into());}}
+        let now=Utc::now().to_rfc3339();
+        let tx=self.conn.transaction().map_err(err)?;
+        for input in inputs {tx.execute("INSERT INTO tasks(id,title,description,priority,status,due_date,due_time,created_at,updated_at,category) VALUES(?1,?2,?3,?4,'todo',?5,?6,?7,?7,?8)",params![uuid::Uuid::new_v4().to_string(),input.title.trim(),input.description,input.priority,input.due_date,input.due_time,now,input.category]).map_err(err)?;}
+        tx.commit().map_err(err)
     }
     pub fn delete_task(&mut self, id: &str) -> Result<()> {
         let mut settings = self.snapshot()?.settings;
@@ -273,9 +300,11 @@ impl Store {
         if !["system", "light", "dark"].contains(&s.theme.as_str()) {
             return Err("请选择跟随系统、浅色或深色主题".into());
         }
-        if !["cat", "shiba", "robot", "ghost"].contains(&s.pet.as_str()) {
-            return Err("请选择内置伙伴".into());
+        if !crate::looks::FREE.contains(&s.pet.as_str()) && !crate::looks::LICENSED.contains(&s.pet.as_str()) {
+            return Err("请选择内置伙伴或装扮".into());
         }
+        // Preserve an expired selected preference during unrelated local task updates.
+        if self.snapshot()?.settings.pet != s.pet { self.require_look(&s.pet)?; }
         for t in [&s.summary_time, &s.quiet_start, &s.quiet_end] {
             if t.len() != 5 || NaiveTime::parse_from_str(t, "%H:%M").is_err() {
                 return Err("提醒时间无效".into());
@@ -284,28 +313,54 @@ impl Store {
         if s.pet_x.is_some_and(|x| !x.is_finite()) || s.pet_y.is_some_and(|y| !y.is_finite()) {
             return Err("窗口位置无效".into());
         }
+        let current = self.snapshot()?;
+        if current.settings.focus_id != s.focus_id && current.tasks.iter().any(|task| {
+            current.settings.focus_id.as_deref() == Some(task.id.as_str()) && task.status == "todo"
+        }) {
+            return Err("请先暂停或完成正在做的任务，再开始其他任务".into());
+        }
         if let Some(id) = &s.focus_id {
-            if !self
-                .snapshot()?
-                .tasks
+            if !current.tasks
                 .iter()
                 .any(|t| &t.id == id && t.status == "todo")
             {
                 return Err("只能专注于待办任务".into());
             }
         }
-        self.conn
-            .execute(
-                "UPDATE settings SET payload=?1 WHERE id=1",
-                [serde_json::to_string(&s).map_err(err)?],
-            )
-            .map_err(err)?;
-        Ok(())
+        let tx = self.conn.transaction().map_err(err)?;
+        if s.focus_id != current.settings.focus_id {
+            if let Some(id) = &s.focus_id {
+                let task = current.tasks.iter().find(|t| &t.id == id).ok_or("任务不存在")?;
+                let now = Utc::now().to_rfc3339();
+                let mut log = task.activity_log.clone();
+                seed_history(task, &mut log);
+                let action = if task.started_at.is_some() || log.iter().any(|e| ["started", "resumed"].contains(&e.action.as_str())) { "resumed" } else { "started" };
+                log.push(ActivityEvent::new(action, &now));
+                tx.execute("UPDATE tasks SET started_at=COALESCE(started_at,?1),updated_at=?1,activity_log=?2 WHERE id=?3", params![now,serde_json::to_string(&log).map_err(err)?,id]).map_err(err)?;
+            }
+        }
+        tx.execute("UPDATE settings SET payload=?1 WHERE id=1", [serde_json::to_string(&s).map_err(err)?]).map_err(err)?;
+        tx.commit().map_err(err)
     }
     pub fn set_focus(&mut self, id: Option<String>) -> Result<()> {
         let mut s = self.snapshot()?.settings;
         s.focus_id = id;
         self.set_settings(s)
+    }
+    pub fn pause_task(&mut self, id: &str) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        let task = snapshot.tasks.iter().find(|t|t.id == id && t.status == "todo").ok_or("待办任务不存在")?;
+        if snapshot.settings.focus_id.as_deref() != Some(id) { return Err("只能暂停正在做的任务".into()); }
+        let mut settings = snapshot.settings;
+        settings.focus_id = None;
+        let mut log = task.activity_log.clone();
+        seed_history(task, &mut log);
+        let now = Utc::now().to_rfc3339();
+        log.push(ActivityEvent::new("paused", &now));
+        let tx = self.conn.transaction().map_err(err)?;
+        tx.execute("UPDATE tasks SET updated_at=?1,activity_log=?2 WHERE id=?3",params![now,serde_json::to_string(&log).map_err(err)?,id]).map_err(err)?;
+        tx.execute("UPDATE settings SET payload=?1 WHERE id=1",[serde_json::to_string(&settings).map_err(err)?]).map_err(err)?;
+        tx.commit().map_err(err)
     }
     pub fn snooze(&mut self, id: &str, minutes: i64, now: DateTime<FixedOffset>) -> Result<()> {
         if minutes != 30 && minutes != 120 {
@@ -381,5 +436,47 @@ impl Store {
         }
         tx.commit().map_err(err)?;
         Ok(())
+    }
+}
+
+fn validate_task(i:&TaskInput)->Result<()> {
+        let title = i.title.trim();
+        if title.is_empty() || title.chars().count() > 200 {
+            return Err("任务名称需要 1–200 个字".into());
+        }
+        if i.description.chars().count() > 10000 {
+            return Err("任务描述过长".into());
+        }
+        if !["high", "med", "low"].contains(&i.priority.as_str())
+            || !["todo", "completed"].contains(&i.status.as_str())
+        {
+            return Err("任务状态或优先级无效".into());
+        }
+        if let Some(d) = &i.due_date {
+            if d.len() != 10 || NaiveDate::parse_from_str(d, "%Y-%m-%d").is_err() {
+                return Err("截止日期无效".into());
+            }
+        }
+        if i.due_time
+            .as_deref()
+            .is_some_and(|t| !["12:00", "17:00"].contains(&t))
+            || (i.due_time.is_some() && i.due_date.is_none())
+        {
+            return Err("请选择上午或下午的截止时间".into());
+        }
+    if i.category.as_deref().is_some_and(|value|!["work","life"].contains(&value)){return Err("任务标签仅支持工作或生活".into());}
+    Ok(())
+}
+
+// Legacy timestamps are evidence; migration itself never invents transitions.
+pub(crate) fn seed_history(task: &Task, log: &mut Vec<ActivityEvent>) {
+    if log.is_empty() {
+        if let Some(at) = &task.started_at { log.push(ActivityEvent::new("started", at)); }
+    }
+    if let Some(at) = &task.completed_at {
+        let recorded = log.iter().any(|event| event.action == "completed" &&
+            (event.at == *at || DateTime::parse_from_rfc3339(at).ok().is_some_and(|time|
+                DateTime::parse_from_rfc3339(&event.at).ok() == Some(time))));
+        if !recorded { log.push(ActivityEvent::new("completed", at)); }
     }
 }

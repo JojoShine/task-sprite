@@ -4,6 +4,8 @@ import type { Task, TaskInput } from "./types";
 import { message } from "./api";
 import { deadlineLabel } from "./deadlines";
 import { DatePicker } from "./DatePicker";
+import { taskDuration } from "./taskTiming";
+import { BottomSheet } from "./BottomSheet";
 export function TaskEditor({
   task,
   onSave,
@@ -24,6 +26,7 @@ export function TaskEditor({
   const [priority, setPriority] = useState<Task["priority"]>(
     task?.priority ?? "med",
   );
+  const [category, setCategory] = useState<Task["category"]>(task?.category ?? null);
   const [date, setDate] = useState(task?.dueDate ?? "");
   const [dueTime, setDueTime] = useState(task?.dueTime ?? null);
   const [saving, setSaving] = useState(false);
@@ -63,6 +66,7 @@ export function TaskEditor({
         title,
         description: content === title ? "" : content,
         priority,
+        category,
         dueDate: date || null,
         dueTime: date ? dueTime : null,
         status: task?.status ?? "todo",
@@ -74,13 +78,8 @@ export function TaskEditor({
       setSaving(false);
     }
   }
-  if (choosingDate) return (
-    <DatePicker value={date} time={dueTime}
-      onClose={() => setChoosingDate(false)}
-      onChange={(date, time) => { setDate(date); setDueTime(time); setChoosingDate(false); }} />
-  );
-  return (
-    <form className="editor" onSubmit={submit}>
+  return (<>
+    <form className="editor" aria-hidden={choosingDate||undefined} onSubmit={submit}>
       <div className="section-heading">
         <h2>{task ? "编辑任务" : "记下一件事"}</h2>
         <button
@@ -144,6 +143,19 @@ export function TaskEditor({
           </div>
         </fieldset>
       </div>
+      <div className="task-label-field"><span>任务标签</span><div className="label-options" role="radiogroup" aria-label="任务标签">{([['work','工作'],['life','生活']] as const).map(([value,label])=><button type="button" key={value} role="radio" aria-label={`${label}标签`} aria-checked={category===value} onClick={()=>setCategory(category===value?null:value)}>{label}</button>)}</div></div>
+      {task && <dl className="task-timing" aria-label="任务时间记录">
+        <div><dt>开始时间</dt><dd>{task.startedAt ? new Date(task.startedAt).toLocaleString("zh-CN", { hour12: false }) : "未记录"}</dd></div>
+        <div><dt>完成时间</dt><dd>{task.completedAt ? new Date(task.completedAt).toLocaleString("zh-CN", { hour12: false }) : "尚未完成"}</dd></div>
+        <div><dt>{task.completedAt ? "任务用时" : "已用时"}</dt><dd>{taskDuration(task)}</dd></div>
+      </dl>}
+      {!!task?.activityLog?.length && <details className="task-history" aria-label="任务状态记录">
+        <summary>状态记录 · {task.activityLog.length}次</summary>
+        <ol>{task.activityLog.map(event => <li key={event.id}>
+          <span>{({started:"开始做",paused:"暂停",resumed:"继续做",completed:"完成",reopened:"恢复为待办"})[event.action]}</span>
+          <time dateTime={event.at}>{new Date(event.at).toLocaleString("zh-CN", {hour12:false})}</time>
+        </li>)}</ol>
+      </details>}
       {error && (
         <p role="alert" className="error">
           {error}
@@ -157,5 +169,6 @@ export function TaskEditor({
         {saving ? "正在保存…" : "保存任务"}
       </button>
     </form>
-  );
+      {choosingDate && <BottomSheet title="选择截止时间" onClose={()=>setChoosingDate(false)}><DatePicker value={date} time={dueTime} onClose={()=>setChoosingDate(false)} onChange={(date,time)=>{setDate(date);setDueTime(time);setChoosingDate(false);}}/></BottomSheet>}
+  </>);
 }

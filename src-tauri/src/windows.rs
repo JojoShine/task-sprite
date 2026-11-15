@@ -17,8 +17,8 @@ pub fn clamp(r: Rect, a: Rect) -> Rect {
 }
 #[cfg(any(not(target_os = "macos"), test))]
 fn pet_footprint(p: Rect) -> Rect {
-    // Covers the rendered sprite element and the full pedestal in the 300×230 pet window.
-    Rect { x: p.x + 60., y: p.y + 61., w: 180., h: 167. }
+    // The sprite and pedestal stay anchored to the bottom as the task card grows.
+    Rect { x: p.x + 60., y: p.y + p.h - 169., w: 180., h: 167. }
 }
 #[cfg(any(not(target_os = "macos"), test))]
 pub fn panel_position(p: Rect, a: Rect) -> Rect {
@@ -80,10 +80,15 @@ pub fn cocoa_menu_position(primary_height: f64, status: Rect, visible: Rect) -> 
     clamp(
         Rect {
             x: status.x + status.w / 2. - 220.,
-            y: area.y.max(primary_height - status.y) + 8.,
+            y: area.y.max(primary_height - status.y) + 2.,
             w: 440.,
             h: 620.,
         },
         area,
     )
+}
+
+
+pub fn resized_pet(p: Rect, height: f64, area: Rect) -> Rect {
+    clamp(Rect { y: p.y + p.h - height, h: height, ..p }, area)
 }

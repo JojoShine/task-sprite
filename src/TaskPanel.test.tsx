@@ -11,7 +11,7 @@ import { TaskPanel } from "./TaskPanel";
 import { api } from "./api";
 import type { Snapshot } from "./types";
 vi.mock("./api", () => ({
-  api: { save: vi.fn(), preview: vi.fn(), deleteTask: vi.fn() },
+  api: { save: vi.fn(), preview: vi.fn(), deleteTask: vi.fn(), pause: vi.fn(), focus: vi.fn(), exportTasks: vi.fn(), quit: vi.fn(), openWebsite: vi.fn(), syncStatus: vi.fn(async () => ({bound:false, accountId:null, enabled:false, pending:0, conflicts:[], license:null})) },
   message: (e: unknown) => String(e),
 }));
 const snapshot: Snapshot = {
@@ -69,21 +69,17 @@ it("closes a committed new task without risking a duplicate from a failed refres
   cleanup();
 });
 
-it("previews a celebration while keeping the unsaved task text", async () => {
+it("keeps action previews on the homepage and hides them while editing a task", async () => {
   vi.mocked(api.preview).mockResolvedValue();
   render(<TaskPanel snapshot={snapshot} onSnapshot={() => {}} />);
-  fireEvent.click(screen.getByRole("button", { name: "记下第一件事" }));
-  fireEvent.change(screen.getByLabelText("任务内容"), {
-    target: { value: "还没保存的内容" },
-  });
   fireEvent.click(screen.getByRole("button", { name: "试试动作" }));
   fireEvent.click(screen.getByRole("button", { name: "预览庆祝" }));
   await waitFor(() =>
     expect(screen.getByRole("status").textContent).toContain("正在演示庆祝"),
   );
-  expect((screen.getByLabelText("任务内容") as HTMLTextAreaElement).value).toBe(
-    "还没保存的内容",
-  );
+  fireEvent.click(screen.getByRole("button", { name: "记下第一件事" }));
+  expect(screen.queryByRole("button", { name: "试试动作" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "预览庆祝" })).toBeNull();
   cleanup();
 });
 
@@ -170,12 +166,117 @@ it("opens the wardrobe from the companion dock and returns to the task list", ()
   expect(screen.getByRole("button", {name:"记下第一件事"})).toBeTruthy();
 });
 
-it("opens annual-card information directly from home and keeps the entry out of unsaved task editing", () => {
+it("keeps the free task panel and settings free of payment entries", () => {
   render(<TaskPanel snapshot={snapshot} onSnapshot={() => {}} />);
-  fireEvent.click(screen.getByRole("button", {name:"年卡与云服务"}));
-  expect(screen.getByRole("heading", {name:"Task Sprite 年卡"})).toBeTruthy();
-  expect((screen.getByRole("button", {name:"购买暂未开放"}) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole("button", {name:"返回任务"}));
-  fireEvent.click(screen.getByRole("button", {name:"记下第一件事"}));
   expect(screen.queryByRole("button", {name:"年卡与云服务"})).toBeNull();
+  expect(screen.queryByText(/年卡|购买|付费|扩容/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name:"设置"}));
+  expect(screen.queryByText(/年卡|购买|付费|扩容/)).toBeNull();
+});
+
+
+it("shows only the latest 15 completions with export available only from settings", async () => {
+  const tasks = Array.from({length:20}, (_,i) => ({id:String(i),title:`历史任务${i}`,description:"",priority:"med" as const,status:"completed" as const,dueDate:null,dueTime:null,createdAt:"2026-11-01",updatedAt:"2026-11-21",completedAt:`2026-11-${String(i+1).padStart(2,"0")}T12:00:00Z`}));
+  vi.mocked(api.exportTasks).mockReset().mockResolvedValue("/tmp/all-tasks.csv");
+  render(<TaskPanel snapshot={{...snapshot,tasks}} onSnapshot={()=>{}}/>);
+  expect(screen.queryByRole("button",{name:/^恢复 /})).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"已完成 20"}));
+  expect(screen.getByText(/仅展示最近15条/)).toBeTruthy();
+  const shown:string[]=[];
+  for(let page=0;page<5;page++){
+    shown.push(...screen.getAllByRole("button",{name:/^恢复 /}).map(button=>button.getAttribute("aria-label")!));
+    if(page<4)fireEvent.click(screen.getByRole("button",{name:"下一页任务"}));
+  }
+  expect(shown).toEqual(Array.from({length:15},(_,i)=>`恢复 历史任务${19-i}`));
+  expect((screen.getByRole("button",{name:"下一页任务"}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole("button",{name:"导出全部任务 CSV"})).toBeNull();
+  expect(api.exportTasks).not.toHaveBeenCalled();
+});
+
+it("returns to pending tasks when the panel is reopened",()=>{
+  const task={id:"done",title:"已完成的事",description:"",priority:"med" as const,status:"completed" as const,dueDate:null,dueTime:null,createdAt:"2026-11-13",updatedAt:"2026-11-13",completedAt:"2026-11-13"};
+  const {rerender}=render(<TaskPanel snapshot={{...snapshot,tasks:[task]}} onSnapshot={()=>{}} panelVisible/>);
+  fireEvent.click(screen.getByRole("button",{name:"已完成 1"}));
+  expect(screen.getByRole("button",{name:`恢复 ${task.title}`})).toBeTruthy();
+  rerender(<TaskPanel snapshot={{...snapshot,tasks:[task]}} onSnapshot={()=>{}} panelVisible={false}/>);
+  rerender(<TaskPanel snapshot={{...snapshot,tasks:[task]}} onSnapshot={()=>{}} panelVisible/>);
+  expect(screen.queryByRole("button",{name:`恢复 ${task.title}`})).toBeNull();
+  expect(screen.getByRole("button",{name:"待办 0"}).classList.contains("active")).toBe(true);
+});
+
+it.each(["tasks","settings","wardrobe","editor"])("keeps the quit entry available at the bottom in %s",async(view)=>{
+  vi.mocked(api.quit).mockReset().mockResolvedValue();
+  render(<TaskPanel snapshot={snapshot} onSnapshot={()=>{}}/>);
+  const buttons:Record<string,string>={settings:"设置",wardrobe:"更多装扮",editor:"记下第一件事"};
+  if(view!=="tasks")fireEvent.click(screen.getByRole("button",{name:buttons[view]}));
+  const quit=screen.getByRole("button",{name:"退出 Task Sprite"});
+  expect(quit.closest(".panel-bottom-bar")).toBeTruthy();
+  fireEvent.click(quit);
+  await waitFor(()=>expect(api.quit).toHaveBeenCalledTimes(1));
+});
+
+
+it("locks all start controls while one task is in progress and unlocks them after completion",()=>{
+  const base={description:"",priority:"med" as const,status:"todo" as const,dueDate:null,dueTime:null,createdAt:"2026-11-13",updatedAt:"2026-11-13",completedAt:null};
+  const current={...base,id:"a",title:"当前任务"},other={...base,id:"b",title:"另一项任务"};
+  const {rerender}=render(<TaskPanel snapshot={{tasks:[current,other],settings:{...snapshot.settings,focusId:current.id}}} onSnapshot={()=>{}}/>);
+  expect((screen.getByRole("button",{name:`暂停 ${current.title}`}) as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByRole("button",{name:`开始做 ${other.title}`}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole("button",{name:/取消当前/})).toBeNull();
+  rerender(<TaskPanel snapshot={{tasks:[{...current,status:"completed"},other],settings:snapshot.settings}} onSnapshot={()=>{}}/>);
+  expect((screen.getByRole("button",{name:`开始做 ${other.title}`}) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it("opens the Powered by website in the system browser", async () => {
+  const openWebsite = vi.mocked(api.openWebsite).mockResolvedValue();
+  render(<TaskPanel snapshot={snapshot} onSnapshot={() => {}} />);
+  const link = screen.getByRole("link", { name: "Powered by TBTParent" });
+  expect(link.getAttribute("href")).toBe("https://tbtparent.me");
+  fireEvent.click(link);
+  await waitFor(() => expect(openWebsite).toHaveBeenCalledOnce());
+});
+
+it("gives code activation the full settings area and restores companions on returning to tasks", async () => {
+  render(<TaskPanel snapshot={snapshot} onSnapshot={() => {}} />);
+  expect(screen.getByRole("button", {name:"更多装扮"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name:"设置"}));
+  expect(await screen.findByRole("button", {name:"激活授权"})).toBeTruthy();
+  expect(screen.queryByText("今天，谁陪你？")).toBeNull();
+  expect(screen.queryByRole("button", {name:"更多装扮"})).toBeNull();
+  expect(document.querySelector(".companions")).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name:"返回"}));
+  expect(screen.getByRole("button", {name:"更多装扮"})).toBeTruthy();
+  expect(document.querySelector(".companions")).toBeTruthy();
+});
+
+it("keeps breakdown and statistics out of the desktop task panel", () => {
+  render(<TaskPanel snapshot={snapshot} onSnapshot={() => {}} />);
+  expect(screen.queryByRole("navigation", {name:"主导航"})).toBeNull();
+  expect(screen.queryByRole("button", {name:"统计"})).toBeNull();
+  expect(screen.queryByRole("button", {name:"汇报"})).toBeNull();
+  expect(screen.queryByRole("button", {name:/一句话拆解/})).toBeNull();
+  expect(screen.getByRole("button", {name:"记下第一件事"})).toBeTruthy();
+});
+
+it("pauses the active task and permits another task after the saved snapshot arrives", async () => {
+  const current={id:"a",title:"先做的事",description:"",priority:"med" as const,status:"todo" as const,dueDate:null,dueTime:null,createdAt:"2026-11-13",updatedAt:"2026-11-13",completedAt:null};
+  const other={...current,id:"b",title:"临时插入"};
+  const changed=vi.fn();
+  const paused={...snapshot,tasks:[{...current,activityLog:[{id:"event",action:"paused" as const,at:"2026-11-14T10:00:00Z"}]},other]};
+  vi.mocked(api.pause).mockResolvedValue(paused);
+  const {rerender}=render(<TaskPanel snapshot={{...paused,settings:{...snapshot.settings,focusId:current.id}}} onSnapshot={changed}/>);
+  fireEvent.click(screen.getByRole("button",{name:`暂停 ${current.title}`}));
+  await waitFor(()=>expect(changed).toHaveBeenCalledWith(paused));
+  expect(api.pause).toHaveBeenCalledWith(current.id);
+  rerender(<TaskPanel snapshot={paused} onSnapshot={changed}/>);
+  expect((screen.getByRole("button",{name:`开始做 ${other.title}`}) as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.getByRole("button",{name:`继续做 ${current.title}`})).toBeTruthy();
+});
+
+it("shows the selected licensed companion in the task footer and falls back on expiry", () => {
+  const selected = {...snapshot,looksExpiresAt:"2099-01-01T00:00:00Z",settings:{...snapshot.settings,pet:"panda" as const}};
+  const {container,rerender} = render(<TaskPanel snapshot={selected} onSnapshot={() => {}} />);
+  expect(screen.getByRole("button", {name:"当前装扮 团子熊猫"}).querySelector(".sprite")?.getAttribute("data-pet")).toBe("panda");
+  rerender(<TaskPanel snapshot={{...selected,looksExpiresAt:null}} onSnapshot={() => {}} />);
+  expect(container.querySelector('[aria-label="当前装扮 团子熊猫"] .sprite')?.getAttribute("data-pet")).toBe("cat");
 });

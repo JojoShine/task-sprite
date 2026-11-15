@@ -2,10 +2,14 @@ mod export;
 mod notifications;
 mod reminders;
 mod store;
+mod looks;
+mod sync_store;
+mod sync_http;
+mod sync_credentials;
 #[cfg(test)]
 mod tests;
 mod windows;
-use std::sync::Mutex;
+use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 use store::{Result, Snapshot, Store, TaskInput};
 use tauri::{
     menu::{Menu, MenuItem},
@@ -16,7 +20,7 @@ use tauri::{
 use chrono::Local;
 use tauri_plugin_dialog::DialogExt;
 use serde::Deserialize;
-struct AppState(Mutex<Store>);
+struct AppState(Mutex<Store>, AtomicBool);
 fn locked(app: &tauri::AppHandle) -> Result<tauri::State<'_, AppState>> {
     Ok(app.state::<AppState>())
 }
@@ -34,11 +38,40 @@ fn get_snapshot(app: tauri::AppHandle) -> Result<Snapshot> {
     s.snapshot()
 }
 #[tauri::command]
-fn get_local_identity(app: tauri::AppHandle) -> Result<store::LocalIdentity> {
-    let state = locked(&app)?;
-    let s = state.0.lock().map_err(|_| "数据库暂不可用")?;
-    s.local_identity()
+fn sync_status(app: tauri::AppHandle) -> Result<sync_store::SyncStatus> {sync_http::status(&app)}
+#[tauri::command]
+async fn activate_license(app: tauri::AppHandle, code: String) -> Result<sync_store::SyncStatus> {
+    let handle = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || sync_http::activate(&app, &code)).await.map_err(|e|e.to_string())??;
+    let state = locked(&handle)?;
+    let store = state.0.lock().map_err(|_| "数据库暂不可用")?;
+    broadcast(&handle, &store)?;
+    Ok(result)
 }
+#[tauri::command]
+async fn pause_sync(app: tauri::AppHandle) -> Result<sync_store::SyncStatus> { tauri::async_runtime::spawn_blocking(move || sync_http::pause(&app)).await.map_err(|e| e.to_string())? }
+#[tauri::command]
+async fn enable_sync(app: tauri::AppHandle)->Result<sync_store::SyncStatus>{
+    let current = sync_http::status(&app)?;
+    if !current.bound { return Err("请先激活授权".into()); }
+    {let state=app.state::<AppState>();let store=state.0.lock().map_err(|_|"数据库暂不可用")?;store.sync_enable()?;}
+    sync_now(app).await
+}
+#[tauri::command]
+async fn sync_now(app: tauri::AppHandle)->Result<sync_store::SyncStatus>{tauri::async_runtime::spawn_blocking(move||sync_http::synchronize(&app)).await.map_err(|e|e.to_string())?}
+#[tauri::command]
+async fn deactivate_license(app: tauri::AppHandle)->Result<()> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move||sync_http::deactivate(&app)).await.map_err(|e|e.to_string())??;
+    let state = locked(&handle)?;
+    let store = state.0.lock().map_err(|_| "数据库暂不可用")?;
+    broadcast(&handle, &store)?;
+    Ok(())
+}
+#[tauri::command]
+fn resolve_sync_conflict(app:tauri::AppHandle,id:String,keep_local:bool)->Result<Snapshot>{let state=app.state::<AppState>();let mut store=state.0.lock().map_err(|_|"数据库暂不可用")?;store.sync_resolve(&id,keep_local)?;sync_http::signal();broadcast(&app,&store)}
+#[tauri::command]
+async fn decompose_tasks(app:tauri::AppHandle,content:String,utc_offset_minutes:i32)->Result<serde_json::Value>{tauri::async_runtime::spawn_blocking(move||sync_http::decompose(&app,content,utc_offset_minutes)).await.map_err(|e|e.to_string())?}
 #[tauri::command]
 fn save_task(app: tauri::AppHandle, input: TaskInput) -> Result<Snapshot> {
     let state = locked(&app)?;
@@ -47,13 +80,17 @@ fn save_task(app: tauri::AppHandle, input: TaskInput) -> Result<Snapshot> {
     if t.status == "completed" {
         let _ = app.emit("celebrate", ());
     }
+    sync_http::signal();
     broadcast(&app, &s)
 }
+#[tauri::command]
+fn save_tasks(app:tauri::AppHandle,inputs:Vec<TaskInput>)->Result<Snapshot>{let state=locked(&app)?;let mut store=state.0.lock().map_err(|_|"数据库暂不可用")?;store.save_tasks(inputs)?;sync_http::signal();broadcast(&app,&store)}
 #[tauri::command]
 fn delete_task(app: tauri::AppHandle, id: String) -> Result<Snapshot> {
     let state = locked(&app)?;
     let mut store = state.0.lock().map_err(|_| "数据库暂不可用")?;
     store.delete_task(&id)?;
+    sync_http::signal();
     broadcast(&app, &store)
 }
 #[tauri::command]
@@ -63,7 +100,9 @@ async fn export_tasks(app: tauri::AppHandle) -> Result<Option<String>> {
         let store = state.0.lock().map_err(|_| "数据库暂不可用")?;
         store.snapshot()?
     };
-    tauri::async_runtime::spawn_blocking(move || {
+    app.state::<AppState>().1.store(true, Ordering::Relaxed);
+    let handle = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
         let parent = app.get_webview_window("panel").ok_or("任务面板不可用")?;
         let file = app.dialog().file()
             .set_parent(&parent)
@@ -75,7 +114,9 @@ async fn export_tasks(app: tauri::AppHandle) -> Result<Option<String>> {
         let path = file.into_path().map_err(|e| e.to_string())?;
         std::fs::write(&path, export::tasks_csv(&snapshot)).map_err(|e| format!("导出失败：{e}"))?;
         Ok(Some(path.to_string_lossy().into_owned()))
-    }).await.map_err(|e| e.to_string())?
+    }).await.map_err(|e| e.to_string());
+    handle.state::<AppState>().1.store(false, Ordering::Relaxed);
+    result?
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -95,6 +136,7 @@ fn update_preferences(app: tauri::AppHandle, patch: Preferences) -> Result<Snaps
     let mut s = state.0.lock().map_err(|_| "数据库暂不可用")?;
     let mut st = s.snapshot()?.settings;
     if let Some(v) = patch.pet {
+        s.require_look(&v)?;
         st.pet = v
     }
     if let Some(v) = patch.notifications {
@@ -126,6 +168,15 @@ fn set_focus(app: tauri::AppHandle, id: Option<String>) -> Result<Snapshot> {
     let state = locked(&app)?;
     let mut s = state.0.lock().map_err(|_| "数据库暂不可用")?;
     s.set_focus(id)?;
+    sync_http::signal();
+    broadcast(&app, &s)
+}
+#[tauri::command]
+fn pause_task(app: tauri::AppHandle, id: String) -> Result<Snapshot> {
+    let state = locked(&app)?;
+    let mut s = state.0.lock().map_err(|_| "数据库暂不可用")?;
+    s.pause_task(&id)?;
+    sync_http::signal();
     broadcast(&app, &s)
 }
 #[tauri::command]
@@ -165,11 +216,12 @@ fn pet_rect(app: &tauri::AppHandle) -> Result<windows::Rect> {
     let w = app.get_webview_window("pet").ok_or("窗口不存在")?;
     let scale = w.scale_factor().map_err(|e| e.to_string())?;
     let p = w.outer_position().map_err(|e| e.to_string())?;
+    let size = w.outer_size().map_err(|e| e.to_string())?;
     Ok(windows::Rect {
         x: p.x as f64 / scale,
         y: p.y as f64 / scale,
-        w: 300.,
-        h: 230.,
+        w: size.width as f64 / scale,
+        h: size.height as f64 / scale,
     })
 }
 #[cfg(target_os = "macos")]
@@ -231,6 +283,10 @@ fn show_panel_from_tray(
     _rect: tauri::Rect,
     _point: PhysicalPosition<f64>,
 ) -> Result<()> {
+    let panel = app.get_webview_window("panel").ok_or("窗口不存在")?;
+    if panel.is_visible().map_err(|e| e.to_string())? {
+        return hide_task_panel(app);
+    }
     #[cfg(target_os = "macos")]
     {
         show_panel(app)
@@ -303,16 +359,24 @@ fn get_pet_position(app: tauri::AppHandle) -> Result<(f64, f64)> {
     Ok((r.x, r.y))
 }
 #[tauri::command]
+fn resize_pet(app: tauri::AppHandle, height: f64) -> Result<()> {
+    if !height.is_finite() || !(230. ..=2000.).contains(&height) {
+        return Err("卡片高度无效".into());
+    }
+    let p = pet_rect(&app)?;
+    if (p.h - height).abs() < 1. { return Ok(()); }
+    let area = monitor_rect(&app, p)?;
+    let r = windows::resized_pet(p, height, area);
+    let w = app.get_webview_window("pet").ok_or("窗口不存在")?;
+    w.set_size(LogicalSize::new(r.w, r.h)).map_err(|e| e.to_string())?;
+    w.set_position(LogicalPosition::new(r.x, r.y)).map_err(|e| e.to_string())
+}
+#[tauri::command]
 fn move_pet(app: tauri::AppHandle, x: f64, y: f64) -> Result<()> {
     if !x.is_finite() || !y.is_finite() {
         return Err("窗口位置无效".into());
     }
-    let p = windows::Rect {
-        x,
-        y,
-        w: 300.,
-        h: 230.,
-    };
+    let p = windows::Rect { x, y, ..pet_rect(&app)? };
     let a = monitor_rect(&app, p)?;
     let r = windows::clamp(p, a);
     app.get_webview_window("pet")
@@ -330,6 +394,12 @@ fn hide_task_panel(app: &tauri::AppHandle) -> Result<()> {
 #[tauri::command]
 fn hide_panel(app: tauri::AppHandle) -> Result<()> {
     hide_task_panel(&app)
+}
+#[tauri::command]
+fn open_website() -> Result<()> {
+    let opener = if cfg!(target_os = "macos") { "open" } else if cfg!(target_os = "windows") { "explorer" } else { "xdg-open" };
+    std::process::Command::new(opener).arg("https://tbtparent.me").spawn()
+        .map(|_| ()).map_err(|e| format!("无法打开浏览器：{e}"))
 }
 #[tauri::command]
 fn is_panel_visible(app: tauri::AppHandle) -> Result<bool> {
@@ -392,17 +462,17 @@ fn restore_pet(app: &tauri::AppHandle) -> Result<()> {
         .map_err(|_| "数据库暂不可用")?
         .snapshot()?
         .settings;
+    let current = pet_rect(app)?;
     let default = windows::Rect {
         x: st.pet_x.unwrap_or(99999.),
-        y: st.pet_y.unwrap_or(99999.),
-        w: 300.,
-        h: 230.,
+        y: st.pet_y.unwrap_or(99999.) + 230. - current.h,
+        ..current
     };
     let a = monitor_rect(app, default)?;
     let p = if st.pet_x.is_none() {
         windows::Rect {
             x: a.x + a.w - default.w,
-            y: a.y + a.h - 250.,
+            y: a.y + a.h - default.h - 20.,
             ..default
         }
     } else {
@@ -425,18 +495,23 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
-            get_local_identity,
+            sync_status,activate_license,pause_sync,enable_sync,sync_now,deactivate_license,resolve_sync_conflict,
+            decompose_tasks,
             save_task,
+            save_tasks,
             delete_task,
             export_tasks,
             update_preferences,
             set_focus,
+            pause_task,
             snooze,
             toggle_panel,
             hide_panel,
+            open_website,
             is_panel_visible,
             get_pet_position,
             move_pet,
+            resize_pet,
             request_notifications,
             test_notification,
             notification_status,
@@ -447,8 +522,15 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
+            sync_credentials::initialize(app.path().resource_dir()?.join("task-sprite-credential-agent"));
             let store = Store::open(&dir.join("tasks.sqlite3")).map_err(std::io::Error::other)?;
-            app.manage(AppState(Mutex::new(store)));
+            // Upgrade legacy activation even when the new protected store has no credential yet.
+            if store.sync_status().map(|status| !status.bound).unwrap_or(false) {
+                let _ = sync_credentials::restore_summary(&store, sync_credentials::read());
+            }
+            app.manage(AppState(Mutex::new(store), AtomicBool::new(false)));
+            app.manage(sync_http::SyncRuntime(AtomicBool::new(false)));
+            sync_http::start_workers(app.handle().clone());
             let show = MenuItem::with_id(app, "show", "打开任务面板", true, None::<&str>)?;
             let pet = MenuItem::with_id(app, "pet", "显示 / 隐藏精灵", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出 Task Sprite", true, None::<&str>)?;
@@ -522,6 +604,12 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|w, event| match event {
+            tauri::WindowEvent::Focused(false) if w.label() == "panel" => {
+                // A native export sheet temporarily takes focus from its parent window.
+                if !w.app_handle().state::<AppState>().1.load(Ordering::Relaxed) {
+                    let _ = hide_task_panel(w.app_handle());
+                }
+            }
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 if w.label() == "panel" {
@@ -537,7 +625,8 @@ pub fn run() {
                         if let Ok(snap) = s.snapshot() {
                             let mut st = snap.settings;
                             st.pet_x = Some(*x as f64 / scale);
-                            st.pet_y = Some(*y as f64 / scale);
+                            let height = w.outer_size().map(|size| size.height as f64 / scale).unwrap_or(230.);
+                            st.pet_y = Some(*y as f64 / scale + height - 230.);
                             let _ = s.set_settings(st);
                         }
                     };

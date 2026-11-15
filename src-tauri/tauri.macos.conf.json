@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "targets": [
+      "app"
+    ],
+    "resources": {
+      "bin/task-sprite-credential-agent": "task-sprite-credential-agent"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Event-driven task synchronization
+
+User decision, 2026-11-15: each task mutation synchronizes immediately; other online terminals receive cloud changes immediately. Remove successful-idle five-minute/full-sync polling and normal manual-sync controls. Keep explicit initial activation/upload consent. Preserve original tasks, history, single-active-task constraint, authorization and protected credential agent.
+
+Use existing authenticated HTTP transport, not a new socket authentication scheme. `POST /task-sprite/changes/wait`, body `{cursor: nonnegative safe integer}`, existing bearer and `X-Task-Sprite-Account` header; response `{revision:number, changed:boolean}`. Wait at most 20 seconds; timeout is a connection heartbeat and must NOT trigger full synchronization. Changed=true triggers the existing revision-safe sync protocol. A reconnect triggers one catch-up sync. Notifications contain no task content or credentials.
+
+Server: PostgreSQL LISTEN/NOTIFY delivers workspace invalidations only after the mutation transaction commits, across API processes. Subscribe before checking the current account revision; recheck after wake/timeout so reconnects and races do not lose changes. Duplicate receipts/conflicts/read-only sync do not publish. Cancel waiters on response/socket disconnect. Reconnect database listener safely; no production deployment or schema reset.
+
+Desktop: local task writes persist first, then signal a serialized sync worker. Cover create/edit/batch create/delete/start/pause/complete/restore/conflict resolution. A separate authenticated notification worker waits for remote changes. Retry failed sync/connection with bounded backoff, never a successful-idle full-sync timer. Pending signals cannot be lost during in-flight synchronization. Disabled/local-only sync never reads credentials or contacts service. Pause/deactivate/identity changes prevent stale work from being applied. Preserve existing signing/Keychain flow and local Docker target.
+
+Miniapp: existing mutation uploads become a reliable serialized queue, retaining changes during in-flight work. One foreground workspace-scoped notification loop; stop starting requests in background/logout/workspace changes, ignore stale responses. Startup/show/reconnect catch up and resume subscription. Remove page-level ten-second sync polling while retaining display clock ticks. No permanent manual sync control after successful initial connection; contextual recovery and the user's cloud-disable choice remain.
+
+Work in the existing dedicated task-sprite branch and the existing copied task-sprite-wechat product workspace. These contain prior user work: no resets, template edits, commits, pushes, external deployment, credential dumps or new signing identities. Unit/integration tests use isolated test database. Real tasks must not be edited for QA; any temporary fixture must be uniquely identified and only that fixture cleaned up.
+
+References: https://www.postgresql.org/docs/current/sql-notify.html and https://www.postgresql.org/docs/current/sql-listen.html (commit delivery, subscribe-before-snapshot race).

@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
-import { Copy, Fingerprint, ArrowLeft, Desktop, Sun, Moon, DownloadSimple, Crown, CaretRight } from "@phosphor-icons/react";
-import type { Theme, LocalIdentity, Settings as Preferences, Snapshot } from "./types";
-import { Membership } from "./Membership";
+import { useState } from "react";
+import { ArrowLeft, Desktop, Sun, Moon, DownloadSimple } from "@phosphor-icons/react";
+import type { Theme, Settings as Preferences, Snapshot } from "./types";
 import { api, message } from "./api";
+import { SyncSettings } from "./SyncSettings";
 export function Settings({
   settings,
   onClose,
@@ -13,13 +13,10 @@ export function Settings({
   onChange: (next: Snapshot) => void;
 }) {
   const [draft, setDraft] = useState(settings);
-  const [showMembership, setShowMembership] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-  const [identity, setIdentity] = useState<LocalIdentity>();
   const [themeBusy, setThemeBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportStatus, setExportStatus] = useState("");
   const [exportError, setExportError] = useState("");
@@ -36,11 +33,6 @@ export function Settings({
       setExportBusy(false);
     }
   }
-  useEffect(() => {
-    let active = true;
-    void api.identity().then(value => { if (active) setIdentity(value); }).catch(e => { if (active) setError(message(e)); });
-    return () => { active = false; };
-  }, []);
   async function changeTheme(theme: Theme) {
     setThemeBusy(true);
     setError("");
@@ -73,7 +65,6 @@ export function Settings({
       setBusy(false);
     }
   }
-  if (showMembership) return <Membership backLabel="返回设置" onClose={() => setShowMembership(false)} />;
   return (
     <div className="settings">
       <div className="section-heading">
@@ -92,13 +83,7 @@ export function Settings({
           ))}
         </div>
       </fieldset>
-      <button type="button" className="service-entry" aria-label="年卡与云服务" onClick={() => setShowMembership(true)}><Crown size={22} /><span><strong>年卡与云服务</strong><small>免费本地版 · 了解年卡规划</small></span><CaretRight size={17} /></button>
-      <section className="identity-card" aria-label="本机身份">
-        <div className="identity-heading"><Fingerprint size={20} /><strong>本机身份</strong><span>尚未绑定微信</span></div>
-        <p>本地用户编号</p>
-        <div className="identity-value"><code>{identity?.userId ?? "正在读取…"}</code><button type="button" disabled={!identity} aria-label="复制本地用户编号" onClick={async () => { try { await navigator.clipboard.writeText(identity!.userId); setCopied(true); } catch (e) { setError(message(e)); } }}><Copy size={17} />{copied ? "已复制" : "复制"}</button></div>
-        <small>未来可扫码绑定，当前数据仅保存在本机。</small>
-      </section>
+      <SyncSettings onChange={onChange} />
       <section className="identity-card export-card" aria-label="导出任务">
         <div className="identity-heading"><DownloadSimple size={20} /><strong>导出任务</strong></div>
         <p>导出全部待办与已完成任务，保留所有任务属性。</p>

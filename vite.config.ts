@@ -4,5 +4,5 @@ export default defineConfig({
   plugins: [react()],
   server: { port: 1420, strictPort: true },
   clearScreen: false,
-  test: { environment: "jsdom" },
+  test: { environment: "jsdom", include: ["src/**/*.test.{ts,tsx}"] },
 });

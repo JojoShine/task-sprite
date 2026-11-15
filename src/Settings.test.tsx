@@ -2,21 +2,9 @@ import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { Settings } from "./Settings";
 import { api } from "./api";
-vi.mock("./api", () => ({ api: { identity: vi.fn(), preferences: vi.fn(), exportTasks: vi.fn() }, message: String }));
+vi.mock("./api", () => ({ api: { syncStatus: vi.fn(async () => ({bound:false, accountId:null,enabled:false,pending:0,conflicts:[],license:null})), preferences: vi.fn(), exportTasks: vi.fn() }, message: String }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-it("shows the persistent local user ID and copies its full value", async () => {
-  const userId = "cdd89012-fb01-4343-8ac8-fc8bf226f384";
-  vi.mocked(api.identity).mockResolvedValue({ userId, createdAt: "2026-11-13" });
-  const writeText = vi.fn(async () => {});
-  vi.stubGlobal("navigator", { clipboard: { writeText } });
-  render(<Settings settings={{pet:"ghost",focusId:null,notifications:true,summaryTime:"09:00",quietStart:"23:00",quietEnd:"08:00",reduceMotion:false,showHint:true,theme:"system",petX:null,petY:null}} onClose={() => {}} onChange={() => {}} />);
-  await waitFor(() => expect(screen.getByText(userId)).toBeTruthy());
-  fireEvent.click(screen.getByRole("button", { name: "复制本地用户编号" }));
-  await waitFor(() => expect(writeText).toHaveBeenCalledWith(userId));
-});
-
 it("exports all tasks through a save dialog and reports completion or cancellation", async () => {
-  vi.mocked(api.identity).mockResolvedValue({ userId: "local", createdAt: "2026-11-13" });
   let complete!: (path: string | null) => void;
   vi.mocked(api.exportTasks).mockImplementationOnce(() => new Promise(resolve => { complete = resolve; })).mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("导出失败"));
   render(<Settings settings={{pet:"ghost",focusId:null,notifications:true,summaryTime:"09:00",quietStart:"23:00",quietEnd:"08:00",reduceMotion:false,showHint:true,theme:"system",petX:null,petY:null}} onClose={() => {}} onChange={() => {}} />);
@@ -32,12 +20,12 @@ it("exports all tasks through a save dialog and reports completion or cancellati
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("导出失败"));
 });
 
-it("opens annual-card information and preserves unsaved preferences on return", async () => {
-  vi.mocked(api.identity).mockResolvedValue({userId:"local",createdAt:"2026-11-14"});
+it("offers code activation without exposing an installation ID or annual-card flow", async () => {
   render(<Settings settings={{pet:"ghost",focusId:null,notifications:true,summaryTime:"09:00",quietStart:"23:00",quietEnd:"08:00",reduceMotion:false,showHint:true,theme:"system",petX:null,petY:null}} onClose={() => {}} onChange={() => {}} />);
-  fireEvent.change(screen.getByLabelText("每日汇总时间"), {target:{value:"10:30"}});
-  fireEvent.click(screen.getByRole("button", {name:"年卡与云服务"}));
-  expect(screen.getByRole("heading", {name:"Task Sprite 年卡"})).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", {name:"返回设置"}));
-  expect((screen.getByLabelText("每日汇总时间") as HTMLInputElement).value).toBe("10:30");
+  expect(await screen.findByLabelText("授权码")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "激活授权" })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "本机身份" })).toBeNull();
+  expect(screen.queryByText(/本地用户编号|本地数据标识|年卡/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "复制本地用户编号" })).toBeNull();
+  expect(screen.getByRole("button", { name: "保存设置" })).toBeTruthy();
 });

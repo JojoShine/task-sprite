@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
-import { Pet } from "./Pet";
+import { Pet, Sprite } from "./Pet";
 import { api } from "./api";
 import type { Snapshot } from "./types";
-vi.mock("./api", () => ({ api: { toggle: vi.fn(async () => {}), save: vi.fn() }, message: (e: unknown) => e instanceof Error ? e.message : String(e) }));
+vi.mock("./api", () => ({ api: { toggle: vi.fn(async () => {}), save: vi.fn(), focus: vi.fn(), pause: vi.fn(), resizePet: vi.fn(async () => {}) }, message: (e: unknown) => e instanceof Error ? e.message : String(e) }));
 const snapshot: Snapshot = {
   tasks: [],
   settings: {
@@ -30,6 +30,7 @@ beforeEach(() => {
   });
   vi.mocked(api.toggle).mockClear();
   vi.mocked(api.save).mockReset();
+  vi.mocked(api.focus).mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -51,13 +52,13 @@ it("responds to a single click and opens tasks only on a double click", () => {
 it("cycles a task stack without opening the panel and handles task removal", () => {
   const tasks = ["写报告", "回邮件", "准备会议"].map((title, i) => ({ id: String(i), title, description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null }));
   const { rerender } = render(<Pet snapshot={{ ...snapshot, tasks }} animation={null} onSnapshot={() => {}} />);
-  expect(screen.getByText(/接下来：写报告/)).toBeTruthy();
+  expect(screen.getByText(/写报告/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
-  expect(screen.getByText(/接下来：回邮件/)).toBeTruthy();
+  expect(screen.getByText(/回邮件/)).toBeTruthy();
   expect(screen.getByText("2 / 3")).toBeTruthy();
   expect(api.toggle).not.toHaveBeenCalled();
   rerender(<Pet snapshot={{ ...snapshot, tasks: [tasks[0]] }} animation={null} onSnapshot={() => {}} />);
-  expect(screen.getByText(/接下来：写报告/)).toBeTruthy();
+  expect(screen.getByText(/写报告/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "下一项任务" })).toBeNull();
 });
 
@@ -68,7 +69,7 @@ it("shows an overdue task before a focused future task and marks its bubble", ()
     { ...base, id: "old", title: "昨天遗漏的任务", priority: "low" as const, dueDate: "2026-11-12" },
   ];
   render(<Pet snapshot={{ ...snapshot, tasks, settings: { ...snapshot.settings, focusId: "future" } }} animation={null} onSnapshot={() => {}} />);
-  expect(screen.getByText(/逾期提醒：昨天遗漏的任务/)).toBeTruthy();
+  expect(screen.getByText(/昨天遗漏的任务/)).toBeTruthy();
   expect(screen.getByText(/已逾期1天/)).toBeTruthy();
 });
 it("returns to an overdue bubble when a new deadline passes while viewing another task", () => {
@@ -80,10 +81,10 @@ it("returns to an overdue bubble when a new deadline passes while viewing anothe
   vi.setSystemTime(new Date(2026, 10, 13, 11, 59));
   const { rerender } = render(<Pet snapshot={{ ...snapshot, tasks }} animation={null} onSnapshot={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
-  expect(screen.getByText(/接下来：明天再做/)).toBeTruthy();
+  expect(screen.getByText(/明天再做/)).toBeTruthy();
   vi.setSystemTime(new Date(2026, 10, 13, 12, 1));
   rerender(<Pet snapshot={{ ...snapshot, tasks }} animation={null} onSnapshot={() => {}} />);
-  expect(screen.getByText(/逾期提醒：上午截止的任务/)).toBeTruthy();
+  expect(screen.getByText(/上午截止的任务/)).toBeTruthy();
   expect(screen.getByText(/已过截止时间/)).toBeTruthy();
 });
 
@@ -93,10 +94,10 @@ it("does not revive a future selection when an overdue task is completed then re
   const future = { ...base, id: "future", title: "未来的任务", dueDate: "2026-11-14" };
   const { rerender } = render(<Pet snapshot={{ ...snapshot, tasks: [old, future] }} animation={null} onSnapshot={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
-  expect(screen.getByText(/接下来：未来的任务/)).toBeTruthy();
+  expect(screen.getByText(/未来的任务/)).toBeTruthy();
   rerender(<Pet snapshot={{ ...snapshot, tasks: [{ ...old, status: "completed" }, future] }} animation={null} onSnapshot={() => {}} />);
   rerender(<Pet snapshot={{ ...snapshot, tasks: [old, future] }} animation={null} onSnapshot={() => {}} />);
-  expect(screen.getByText(/逾期提醒：恢复的逾期任务/)).toBeTruthy();
+  expect(screen.getByText(/恢复的逾期任务/)).toBeTruthy();
 });
 
 
@@ -107,7 +108,7 @@ it("uses one current card with an overdue reminder and returns to the bubble on 
   const settings = { ...snapshot.settings, focusId: current.id };
   const { rerender } = render(<Pet snapshot={{ tasks: [old, current], settings }} animation={null} onSnapshot={() => {}} />);
   const currentTask = screen.getByRole("button", { name: "正在做：整理明天的计划" });
-  expect(screen.getByText(/逾期提醒：待补交的周报/)).toBeTruthy();
+  expect(screen.getByText(/待补交的周报/)).toBeTruthy();
   expect(screen.getByRole("group", { name: "当前任务卡片" })).toBeTruthy();
   expect(screen.queryByRole("group", { name: "桌面任务提示" })).toBeNull();
   expect(screen.getByRole("status", { name: "任务底座：待办2项，逾期1项" })).toBeTruthy();
@@ -118,7 +119,7 @@ it("uses one current card with an overdue reminder and returns to the bubble on 
   expect(screen.queryByRole("group", { name: "当前任务卡片" })).toBeNull();
   expect(screen.getByRole("group", { name: "桌面任务提示" })).toBeTruthy();
   expect(screen.getByRole("status", { name: "任务底座：待办1项，逾期1项" })).toBeTruthy();
-  expect(screen.getByText(/逾期提醒：待补交的周报/)).toBeTruthy();
+  expect(screen.getByText(/待补交的周报/)).toBeTruthy();
 });
 
 it("shows the current task even with hints hidden and removes it when unselected", () => {
@@ -152,7 +153,7 @@ it("completes the current task on the pet once and retains overdue reminders dur
   expect(onSnapshot).toHaveBeenCalledWith(next);
   rerender(<Pet snapshot={next} animation="celebrate" onSnapshot={onSnapshot} />);
   expect(screen.queryByRole("button", { name: "正在做：当前的工作" })).toBeNull();
-  expect(screen.getByText(/逾期提醒：还没补交的周报/)).toBeTruthy();
+  expect(screen.getByText(/还没补交的周报/)).toBeTruthy();
 });
 
 it("keeps the task and overdue reminder visible when completion fails and permits retry", async () => {
@@ -163,7 +164,7 @@ it("keeps the task and overdue reminder visible when completion fails and permit
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "完成当前任务：需要重试的任务" })));
   expect(screen.getByRole("alert").textContent).toContain("完成失败，请重试");
   expect(screen.getByRole("button", { name: "正在做：需要重试的任务" })).toBeTruthy();
-  expect(screen.getByText(/逾期提醒：需要重试的任务/)).toBeTruthy();
+  expect(screen.getAllByText("需要重试的任务")).toHaveLength(2);
   expect(onSnapshot).not.toHaveBeenCalled();
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "完成当前任务：需要重试的任务" })));
   expect(api.save).toHaveBeenCalledTimes(2);
@@ -186,4 +187,302 @@ it("hides the head card while the panel is open and restores it on close while r
   expect(screen.queryByRole("group", { name: "桌面任务提示" })).toBeNull();
   rerender(<Pet snapshot={{ ...focused, settings: snapshot.settings }} animation={null} onSnapshot={() => {}} panelVisible={false} />);
   expect(screen.getByRole("group", { name: "桌面任务提示" })).toBeTruthy();
+});
+
+
+it("completes the displayed next task without opening the panel, prevents double saves and allows retry", async () => {
+  const base = { description: "完整保留的说明", priority: "high" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const one = { ...base, id: "first", title: "第一件事" };
+  const two = { ...base, id: "second", title: "评估Apple个人开发者性质与企业开发者账号的差异，并整理完整申请资料和费用说明" };
+  let finish!: (s: Snapshot) => void;
+  vi.mocked(api.save).mockRejectedValueOnce(new Error("保存失败")).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const onSnapshot = vi.fn();
+  render(<Pet snapshot={{ ...snapshot, tasks: [one, two] }} animation={null} onSnapshot={onSnapshot} />);
+  fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
+  expect(screen.getByText(two.title)).toBeTruthy();
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: `完成任务：${two.title}` })));
+  expect(screen.getByRole("alert").textContent).toContain("完成失败，请重试");
+  const complete = screen.getByRole("button", { name: `完成任务：${two.title}` });
+  fireEvent.click(complete);
+  fireEvent.click(complete);
+  expect((complete as HTMLButtonElement).disabled).toBe(true);
+  expect(api.save).toHaveBeenCalledTimes(2);
+  expect(api.save).toHaveBeenLastCalledWith({ ...two, status: "completed" });
+  const next: Snapshot = { ...snapshot, tasks: [one, { ...two, status: "completed" }] };
+  await act(async () => finish(next));
+  expect(onSnapshot).toHaveBeenCalledWith(next);
+  expect(api.toggle).not.toHaveBeenCalled();
+});
+
+it("keeps task text visible during interaction captions", () => {
+  const task = { id: "next", title: "需要完整显示的任务标题", description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  render(<Pet snapshot={{ ...snapshot, tasks: [task] }} animation="celebrate" onSnapshot={() => {}} />);
+  expect(screen.getByText(task.title)).toBeTruthy();
+});
+
+
+it("resizes the native window when the full card grows and shrinks", async () => {
+  let notify!: ResizeObserverCallback;
+  let height = 340;
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: ResizeObserverCallback) { notify = callback; }
+    observe() {}
+    disconnect() {}
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({ height } as DOMRect));
+  vi.mocked(api.resizePet).mockClear();
+  try {
+    render(<Pet snapshot={snapshot} animation={null} onSnapshot={() => {}} />);
+    await act(async () => {});
+    expect(api.resizePet).toHaveBeenLastCalledWith(340);
+    height = 480;
+    await act(async () => notify([], {} as ResizeObserver));
+    expect(api.resizePet).toHaveBeenLastCalledWith(480);
+    height = 180;
+    await act(async () => notify([], {} as ResizeObserver));
+    expect(api.resizePet).toHaveBeenLastCalledWith(230);
+    await act(async () => notify([], {} as ResizeObserver));
+    expect(api.resizePet).toHaveBeenCalledTimes(3);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+
+it("renders next and overdue as separate labels rather than part of the task title", () => {
+  const base = { description: "", priority: "high" as const, status: "todo" as const, dueTime: "17:00", createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const old = { ...base, id: "old", title: "补交上周报告", dueDate: "2026-11-12" };
+  const next = { ...base, id: "next", title: "整理本周资料", dueDate: "2026-11-14" };
+  render(<Pet snapshot={{ ...snapshot, tasks: [old, next] }} animation={null} onSnapshot={() => {}} />);
+  expect(screen.getByText("逾期提醒").classList.contains("task-state-label")).toBe(true);
+  expect(screen.getByText(old.title).classList.contains("task-bubble-title")).toBe(true);
+  expect(screen.queryByText(`逾期提醒：${old.title}`)).toBeNull();
+  expect(screen.getByRole("button", { name: `开始做：${old.title}` })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
+  expect(screen.getByText("接下来").classList.contains("task-state-label")).toBe(true);
+  expect(screen.getByText(next.title).classList.contains("task-bubble-title")).toBe(true);
+  expect(screen.getByRole("button", { name: `完成任务：${next.title}` })).toBeTruthy();
+});
+
+it("separates current and overdue labels when both tasks appear on the head card", () => {
+  const base = { description: "", priority: "med" as const, status: "todo" as const, dueTime: "17:00", createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const old = { ...base, id: "old", title: "补交上周报告", dueDate: "2026-11-12" };
+  const current = { ...base, id: "now", title: "整理本周资料", dueDate: "2026-11-14" };
+  render(<Pet snapshot={{tasks: [old, current],settings:{...snapshot.settings,focusId:current.id}}} animation={null} onSnapshot={() => {}} />);
+  expect(screen.getByText("正在做").classList.contains("task-state-label")).toBe(true);
+  expect(screen.getByText("逾期提醒").classList.contains("task-state-label")).toBe(true);
+  expect(screen.getByText(old.title)).toBeTruthy();
+  expect(screen.getByText(current.title)).toBeTruthy();
+  expect(screen.queryByText(`逾期提醒：${old.title}`)).toBeNull();
+});
+
+
+it("starts the displayed next task directly, then shows the next pending task after completing it", async () => {
+  const base = { description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const first = { ...base, id: "first", title: "第一项待办" };
+  const chosen = { ...base, id: "chosen", title: "翻页选中的待办", createdAt: "2026-11-13T01:00:00" };
+  const before: Snapshot = { ...snapshot, tasks: [first, chosen] };
+  const focused: Snapshot = { ...before, settings: { ...before.settings, focusId: chosen.id } };
+  let finish!: (next: Snapshot) => void;
+  vi.mocked(api.focus).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const onSnapshot = vi.fn();
+  const { rerender } = render(<Pet snapshot={before} animation={null} onSnapshot={onSnapshot} />);
+  fireEvent.click(screen.getByRole("button", { name: "下一项任务" }));
+  const start = screen.getByRole("button", { name: `开始做：${chosen.title}` });
+  fireEvent.click(start);
+  fireEvent.click(start);
+  expect((start as HTMLButtonElement).disabled).toBe(true);
+  expect(api.focus).toHaveBeenCalledExactlyOnceWith(chosen.id);
+  expect((screen.getByRole("button", { name: `完成任务：${chosen.title}` }) as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => finish(focused));
+  expect(onSnapshot).toHaveBeenLastCalledWith(focused);
+  rerender(<Pet snapshot={focused} animation={null} onSnapshot={onSnapshot} />);
+  expect(screen.getByText("正在做")).toBeTruthy();
+  expect(screen.getByText(chosen.title)).toBeTruthy();
+  const after: Snapshot = { ...before, tasks: [first, { ...chosen, status: "completed" }] };
+  vi.mocked(api.save).mockResolvedValue(after);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: `完成当前任务：${chosen.title}` })));
+  expect(onSnapshot).toHaveBeenLastCalledWith(after);
+  rerender(<Pet snapshot={after} animation="celebrate" onSnapshot={onSnapshot} />);
+  expect(screen.getByText("接下来")).toBeTruthy();
+  expect(screen.getByText(first.title)).toBeTruthy();
+  expect(screen.getByRole("button", { name: `开始做：${first.title}` })).toBeTruthy();
+  expect(screen.queryByText(chosen.title)).toBeNull();
+  expect(api.toggle).not.toHaveBeenCalled();
+});
+
+it("keeps the next task available when starting fails and permits retry", async () => {
+  const task = { id: "next", title: "需要开始的任务", description: "", priority: "med" as const, status: "todo" as const, dueDate: null, dueTime: null, createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const focused: Snapshot = { ...snapshot, tasks: [task], settings: { ...snapshot.settings, focusId: task.id } };
+  vi.mocked(api.focus).mockRejectedValueOnce(new Error("数据库暂不可用")).mockResolvedValue(focused);
+  const onSnapshot = vi.fn();
+  render(<Pet snapshot={{ ...snapshot, tasks: [task] }} animation={null} onSnapshot={onSnapshot} />);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: `开始做：${task.title}` })));
+  expect(screen.getByRole("alert").textContent).toBe("开始失败，请重试");
+  expect(screen.getByText("接下来")).toBeTruthy();
+  expect(onSnapshot).not.toHaveBeenCalled();
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: `开始做：${task.title}` })));
+  expect(api.focus).toHaveBeenCalledTimes(2);
+  expect(onSnapshot).toHaveBeenCalledWith(focused);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(api.toggle).not.toHaveBeenCalled();
+});
+
+
+it.each([false])("starts overdue work directly and preserves its reminder until completion (current task: %s)", async (hasFocus) => {
+  const base = { description: "", priority: "med" as const, status: "todo" as const, dueTime: "17:00", createdAt: "2026-11-13", updatedAt: "2026-11-13", completedAt: null };
+  const old = { ...base, id: "old", title: "补交已逾期的方案", dueDate: "2026-11-12" };
+  const next = { ...base, id: "next", title: "准备下一次会议", dueDate: "2026-11-14" };
+  const before: Snapshot = { tasks: [old, next], settings: { ...snapshot.settings, focusId: hasFocus ? next.id : null } };
+  const focused: Snapshot = { ...before, settings: { ...before.settings, focusId: old.id } };
+  vi.mocked(api.focus).mockResolvedValue(focused);
+  const onSnapshot = vi.fn();
+  const { rerender } = render(<Pet snapshot={before} animation={null} onSnapshot={onSnapshot} />);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: `开始做：${old.title}` })));
+  expect(api.focus).toHaveBeenCalledExactlyOnceWith(old.id);
+  expect(onSnapshot).toHaveBeenLastCalledWith(focused);
+  rerender(<Pet snapshot={focused} animation={null} onSnapshot={onSnapshot} />);
+  expect(screen.getByText("正在做")).toBeTruthy();
+  expect(screen.getByText("逾期提醒")).toBeTruthy();
+  expect(screen.getByText("已逾期1天")).toBeTruthy();
+  expect(screen.getByRole("status", { name: "任务底座：待办2项，逾期1项" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: `开始做：${old.title}` })).toBeNull();
+  const after: Snapshot = { tasks: [{ ...old, status: "completed" }, next], settings: snapshot.settings };
+  vi.mocked(api.save).mockResolvedValue(after);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: `完成当前任务：${old.title}` })));
+  rerender(<Pet snapshot={after} animation="celebrate" onSnapshot={onSnapshot} />);
+  expect(screen.getByText("接下来")).toBeTruthy();
+  expect(screen.getByText(next.title)).toBeTruthy();
+  expect(screen.getByRole("status", { name: "任务底座：待办1项，逾期0项" })).toBeTruthy();
+  expect(api.toggle).not.toHaveBeenCalled();
+});
+
+
+it("never shows completed tasks on the desktop card even when the saved focus points to one",()=>{
+  const base={description:"",priority:"high" as const,dueDate:"2026-11-12",dueTime:"17:00",createdAt:"2026-11-13",updatedAt:"2026-11-13",completedAt:null};
+  const done={...base,id:"done",title:"已经完成的任务",status:"completed" as const,completedAt:"2026-11-13"};
+  const todo={...base,id:"todo",title:"仍要处理的任务",status:"todo" as const};
+  render(<Pet snapshot={{tasks:[done,todo],settings:{...snapshot.settings,focusId:done.id}}} animation={null} onSnapshot={()=>{}}/>);
+  expect(screen.queryByText(done.title)).toBeNull();
+  expect(screen.getByText(todo.title)).toBeTruthy();
+  expect(screen.getByRole("status",{name:"任务底座：待办1项，逾期1项"})).toBeTruthy();
+});
+
+
+it("rotates pending cards every ten seconds, loops, and resets the delay after manual paging",()=>{
+  const tasks=["轮播任务A","轮播任务B","轮播任务C"].map((title,i)=>({id:String(i),title,description:"",priority:"med" as const,status:"todo" as const,dueDate:null,dueTime:null,createdAt:"2026-11-13",updatedAt:"2026-11-13",completedAt:null}));
+  const {rerender}=render(<Pet snapshot={{...snapshot,tasks}} animation={null} onSnapshot={()=>{}}/>);
+  act(()=>vi.advanceTimersByTime(9999));expect(screen.getByText(tasks[0].title)).toBeTruthy();
+  act(()=>vi.advanceTimersByTime(1));expect(screen.getByText(tasks[1].title)).toBeTruthy();
+  // Snapshot refreshes and pet animations must not restart the rotation clock.
+  act(()=>vi.advanceTimersByTime(5000));
+  rerender(<Pet snapshot={{...snapshot,tasks:[...tasks]}} animation="reminder" onSnapshot={()=>{}}/>);
+  act(()=>vi.advanceTimersByTime(5000));expect(screen.getByText(tasks[2].title)).toBeTruthy();
+  act(()=>vi.advanceTimersByTime(10000));expect(screen.getByText(tasks[0].title)).toBeTruthy();
+  act(()=>vi.advanceTimersByTime(9000));
+  fireEvent.click(screen.getByRole("button",{name:"下一项任务"}));
+  act(()=>vi.advanceTimersByTime(9999));expect(screen.getByText(tasks[1].title)).toBeTruthy();
+  act(()=>vi.advanceTimersByTime(1));expect(screen.getByText(tasks[2].title)).toBeTruthy();
+});
+
+it("stops rotation while doing one task, blocks starting overdue work, and resumes after completion",async()=>{
+  const base={description:"",priority:"med" as const,status:"todo" as const,dueTime:null,createdAt:"2026-11-13",updatedAt:"2026-11-13",completedAt:null};
+  const current={...base,id:"now",title:"必须先完成的任务",dueDate:null};
+  const old={...base,id:"old",title:"暂不能切换的逾期任务",dueDate:"2026-11-12"};
+  const next={...base,id:"next",title:"等待轮播的任务",dueDate:null};
+  const before={tasks:[current,old,next],settings:{...snapshot.settings,focusId:current.id}};
+  const {rerender}=render(<Pet snapshot={before} animation={null} onSnapshot={()=>{}}/>);
+  const start=screen.getByRole("button",{name:`开始做：${old.title}`}) as HTMLButtonElement;
+  expect(start.disabled).toBe(true);fireEvent.click(start);expect(api.focus).not.toHaveBeenCalled();
+  act(()=>vi.advanceTimersByTime(30000));
+  expect(screen.getByRole("button",{name:`正在做：${current.title}`})).toBeTruthy();
+  expect(screen.queryByRole("button",{name:"下一项任务"})).toBeNull();
+  rerender(<Pet snapshot={{tasks:[{...current,status:"completed"},old,next],settings:snapshot.settings}} animation={null} onSnapshot={()=>{}}/>);
+  expect(screen.getByText(old.title)).toBeTruthy();
+  act(()=>vi.advanceTimersByTime(10000));expect(screen.getByText(next.title)).toBeTruthy();
+});
+
+it("pauses rotation during a start request and tolerates task removal",async()=>{
+  const tasks=["等待开始A","等待开始B"].map((title,i)=>({id:String(i),title,description:"",priority:"med" as const,status:"todo" as const,dueDate:null,dueTime:null,createdAt:"2026-11-13",updatedAt:"2026-11-13",completedAt:null}));
+  let finish!:(next:Snapshot)=>void;vi.mocked(api.focus).mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+  const {rerender}=render(<Pet snapshot={{...snapshot,tasks}} animation={null} onSnapshot={()=>{}}/>);
+  fireEvent.click(screen.getByRole("button",{name:`开始做：${tasks[0].title}`}));
+  act(()=>vi.advanceTimersByTime(20000));expect(screen.getByText(tasks[0].title)).toBeTruthy();
+  await act(async()=>finish({...snapshot,tasks,settings:{...snapshot.settings,focusId:tasks[0].id}}));
+  rerender(<Pet snapshot={{...snapshot,tasks:[tasks[1]]}} animation={null} onSnapshot={()=>{}}/>);
+  act(()=>vi.advanceTimersByTime(20000));expect(screen.getByText(tasks[1].title)).toBeTruthy();
+  rerender(<Pet snapshot={snapshot} animation={null} onSnapshot={()=>{}}/>);
+  act(()=>vi.advanceTimersByTime(20000));expect(screen.queryByRole("button",{name:/开始做：/})).toBeNull();
+});
+
+it("pauses directly from the current task card and shows the saved pending state", async () => {
+  vi.useRealTimers();
+  const task={id:"active",title:"随时可暂停",description:"",priority:"med" as const,status:"todo" as const,dueDate:null,dueTime:null,createdAt:"2026-11-13",updatedAt:"2026-11-13",startedAt:"2026-11-14T01:00:00Z",completedAt:null};
+  const paused={...snapshot,tasks:[{...task,activityLog:[{id:"pause",action:"paused" as const,at:"2026-11-14T02:00:00Z"}]}]};
+  vi.mocked(api.pause).mockResolvedValue(paused);
+  const changed=vi.fn();
+  const {rerender}=render(<Pet snapshot={{...snapshot,tasks:[task],settings:{...snapshot.settings,focusId:task.id}}} animation={null} onSnapshot={changed}/>);
+  await act(async()=>fireEvent.click(screen.getByRole("button",{name:`暂停当前任务：${task.title}`})));
+  expect(api.pause).toHaveBeenCalledWith(task.id);
+  expect(changed).toHaveBeenCalledWith(paused);
+  rerender(<Pet snapshot={paused} animation={null} onSnapshot={changed}/>);
+  expect(screen.queryByRole("group",{name:"当前任务卡片"})).toBeNull();
+  expect(screen.getByRole("button",{name:`继续做：${task.title}`})).toBeTruthy();
+});
+
+it("renders working and paused poses from actual task activity", () => {
+  const task = {id:"state-task", title:"状态任务", description:"", priority:"med" as const, status:"todo" as const, dueDate:null, dueTime:null, createdAt:"2026-11-13", updatedAt:"2026-11-13", completedAt:null, activityLog:[{id:"a",action:"paused" as const,at:"2026-11-13T10:00:00Z"}]};
+  const {container,rerender} = render(<Pet snapshot={{...snapshot,tasks:[task],settings:{...snapshot.settings,focusId:task.id}}} animation={null} onSnapshot={() => {}} />);
+  expect(container.querySelector(".sprite")?.getAttribute("data-state")).toBe("working");
+  rerender(<Pet snapshot={{...snapshot,tasks:[task]}} animation={null} onSnapshot={() => {}} />);
+  expect(container.querySelector(".sprite")?.getAttribute("data-state")).toBe("rest");
+});
+it("keeps a premium preference but renders its free fallback until renewal", () => {
+  const selected = {...snapshot,settings:{...snapshot.settings,pet:"snow-shiba" as const}};
+  const {container,rerender} = render(<Pet snapshot={selected} animation={null} onSnapshot={() => {}} />);
+  expect(container.querySelector(".sprite")?.getAttribute("data-pet")).toBe("shiba");
+  rerender(<Pet snapshot={{...selected,looksExpiresAt:"2099-01-01T00:00:00Z"}} animation={null} onSnapshot={() => {}} />);
+  expect(container.querySelector(".sprite")?.getAttribute("data-pet")).toBe("snow-shiba");
+});
+it.each(["idle","working","rest","reminder","celebrate","interaction"] as const)("gives fox and panda a distinct %s pose", state => {
+  for (const pet of ["fox","panda"] as const) {
+    const {container,unmount} = render(<Sprite pet={pet} state={state} />);
+    expect(container.querySelector(".sprite")?.getAttribute("data-state")).toBe(state);
+    expect(container.querySelector(".sprite")?.getAttribute("data-pet")).toBe(pet);
+    expect(container.querySelector(".sprite svg")).toBeTruthy();
+    unmount();
+  }
+});
+
+it("gives each licensed vector six different rendered poses", () => {
+  const states = ["idle","working","rest","reminder","celebrate","interaction"] as const;
+  for (const pet of ["fox","panda"] as const) {
+    const poses = states.map(state => {
+      const {container,unmount} = render(<Sprite pet={pet} state={state} />);
+      const art = container.querySelector("svg")?.innerHTML;
+      unmount();
+      return art;
+    });
+    expect(new Set(poses).size).toBe(6);
+  }
+});
+it.each(["mint-ghost","sunset-robot","snow-shiba","cream-cat"] as const)("keeps %s animated across all six states using the base pixel sheet", pet => {
+  const poses = new Set();
+  for (const state of ["idle","working","rest","reminder","celebrate","interaction"] as const) {
+    const {container,unmount} = render(<Sprite pet={pet} state={state} />);
+    const sprite = container.querySelector(".sprite") as HTMLElement;
+    expect(sprite.style.backgroundImage).toMatch(/pets\/(ghost|robot|shiba|cat)\.png/);
+    expect(sprite.style.filter).toBeTruthy();
+    poses.add(sprite.style.backgroundPositionX + (sprite.querySelector("svg")?.innerHTML ?? ""));
+    unmount();
+  }
+  expect(poses.size).toBe(6);
+});
+it("keeps quiet hours in a static rest pose despite completion events and clicks", () => {
+  const quiet = {...snapshot,settings:{...snapshot.settings,pet:"fox" as const,quietStart:"00:00",quietEnd:"23:59"},looksExpiresAt:"2099-01-01T00:00:00Z"};
+  const {container} = render(<Pet snapshot={quiet} animation="celebrate" onSnapshot={() => {}} />);
+  fireEvent.click(screen.getByRole("button", {name:"点击互动，双击打开任务面板，拖动可移动精灵"}));
+  const sprite = container.querySelector(".sprite")!;
+  expect(sprite.getAttribute("data-state")).toBe("rest");
+  expect(sprite.classList.contains("still")).toBe(true);
 });

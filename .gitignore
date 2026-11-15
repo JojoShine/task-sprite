@@ -6,3 +6,21 @@ src-tauri/target/
 *.log
 
 release/
+release-local/
+
+src-tauri/bin/
+
+.env
+.env.*
+!.env.example
+!.env.production.example
+.local/
+.superpowers/
+docs/qa/
+ci-logs/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.sql
+*.p12
+*.key

@@ -130,3 +130,29 @@ Verification: new regressions first failed on missing wardrobe/settings entries,
 ## macOS menu-bar task panel 2026-11-14
 User requested a compact task card above the pet and the full macOS panel opening from the top menu bar. All macOS show routes now use the actual NSStatusItem window frame and its screen, rather than the pet or current mouse position. Native status/screen access runs on the main thread through the existing tray API; logical AppKit geometry is converted together to top-left window coordinates. Opening never relocates the pet, and dragging the pet no longer repositions the open macOS panel. Windows retains its prior adaptive pet-relative layout and tray path. Card/panel mutual exclusion, completion, overdue reminders and user data are unchanged.
 Verification:29 Rust tests and56 frontend tests pass, TypeScript/Vite and optimized signed macOS bundle succeed; delivery copy signature verifies. Status-center/edge anchoring and existing cross-display/negative-origin geometry tests pass. Review identified auto-hidden menu-bar overlap; a regression reproduced y8 instead of30, then passed after anchoring below both the status-item bottom and visible work-area top. Independent follow-up found no further issues. Native updated application opens via the task card and pet double click, and closing restores the compact task card/count pedestal. Native task counts remain1 todo/3 completed and robot selection retained; no task/preferences edited. App running after update. Physical mixed-DPI/menu-bar auto-hide settings were not changed during QA; those cases are covered by geometry fixtures.
+
+
+## 2026-11-14 · Sync controls and settings without password prompts
+
+Aligned immediate sync / pause actions as equal-height grid buttons with matching icons; separated device deactivation below a divider. Settings now reads display-only activation / license metadata from SQLite, never reading a keychain secret during opening or polling. Activation and successful server validation update this metadata; real device tokens remain in Keychain, and all cloud requests retain token and workspace checks. Legacy already-enabled workspaces retain an activation-only display when the system temporarily refuses their credential. This metadata never authorizes cloud requests.
+
+Legacy keychain operations now serialize a scoped no-interaction guard, restoring the previous system interaction state on every exit. A locked or denied credential reports an inline failure instead of opening a password dialog. Regular license refresh no longer rewrites the unchanged device credential.
+
+Verification:91 frontend tests,63 Rust tests and signed macOS bundle pass. Native final app opens settings without system password UI; no duplicate code input for existing activation; task counts2 todo /1 completed retained. Actual immediate sync returns keychain authentication failure -25293 without prompting. Cloud sync on this installation is therefore NOT verified restored; the protected old credential remains in Keychain and no password, ACL bypass, credential deletion or plaintext-token fallback was used. The UI retains activation and local task management. Stable trusted signing / approved credential recovery is still needed to restore access to that protected legacy credential.
+
+Final running release binary inode352367942 matches delivery, SHA25635377d70a7f81876ae0572a8e3dab4c0d1c5ff876cde9423be8bcbb754cc62b2. No server deployment or user task changes. Screenshot:docs/qa/2026-11-14-settings-no-password.png.
+
+
+## 2026-11-14 · Actual synchronization recovery completed
+
+Supersedes the earlier settings-only fix: cloud synchronization is now restored in the requested local Docker environment. Stable caller-checked credential agent, signed UI identity and explicit local bundle target fix actual credentials and requests. Same account/installation/license/device record and expiry retained;4 original local task rows unchanged, quota1/3, pending0. Actual desktop→miniapp→desktop verification and a second installed app build with changed UI CDHash passed without Mac password or repeated authorization. Only the own QA task was cleaned.93 frontend,69 Rust and157 isolated API tests pass. Independent review complete. See docs/qa/2026-11-14-sync-restored.md for acceptance, backup locations and proof screenshots.
+
+
+## 2026-11-15 · Task-change synchronization
+
+Replaced periodic full sync and normal manual-sync controls with durable mutation triggers and authenticated committed cloud notifications. Foreground miniapp reconnect, startup retry and lifecycle isolation verified; original tasks, installation and authorization preserved. API164, desktop74Rust/93UI, mini189 tests plus types/build/signing passed. Native create/edit/complete/delete bidirectional fixture and isolated12-case HTTP mutation/heartbeat validation passed without manual sync. Original9task rows, identity and license match preinstall baseline; credential-agent digest unchanged. Local Docker only. See docs/qa/2026-11-15-event-sync.md for exact evidence and limits.
+
+
+## 2026-11-15 · Native offline/recovery verification
+
+Two local API-outage rounds passed with the installed desktop and genuinely logged-in miniapp: create+edit offline, then edit already-synced tasks offline. Both recovered automatically without manual sync or client navigation; second recovery converged in about24.1seconds. Same2fixture IDs throughout, no lost/duplicate tasks, pending0. Cleanup propagated automatically, restoring9original tasks; full task rows, identity, authorization/device/member records unchanged. Local API running/healthy. No product source changed. Exact scope and evidence: docs/qa/2026-11-15-offline-sync.md.

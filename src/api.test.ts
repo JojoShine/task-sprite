@@ -18,7 +18,7 @@ it("sends only editable task fields to the strict native command", async () => {
           "priority",
           "status",
           "dueDate",
-          "dueTime",
+          "dueTime", "category",
         ].includes(k),
     );
     if (extra.length) throw new Error("unknown field " + extra[0]);
@@ -37,4 +37,11 @@ it("sends only editable task fields to the strict native command", async () => {
     completedAt: "2026-11-13",
   };
   await expect(api.save(task)).resolves.toMatchObject({ tasks: [] });
+});
+
+it("activation sends only the code to native and never exposes an installation identity API", async () => {
+  vi.mocked(invoke).mockResolvedValue({bound:true,accountId:"workspace",enabled:false,license:null,pending:0,conflicts:[]});
+  await api.activateLicense("TS-ABCD-ABCD-ABCD-ABCD-ABCD-ABCD");
+  expect(invoke).toHaveBeenLastCalledWith("activate_license", {code:"TS-ABCD-ABCD-ABCD-ABCD-ABCD-ABCD"});
+  expect("identity" in api).toBe(false);
 });

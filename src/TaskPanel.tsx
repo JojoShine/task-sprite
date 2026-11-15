@@ -1,38 +1,40 @@
 import {
   Trash,
   Palette,
-  Crown,
   GearSix,
-  Minus,
   Plus,
   Check,
-  Star,
   Clock,
   CaretLeft,
   CaretRight,
   X,
   Play,
+  SignOut,
+  Pause,
 } from "@phosphor-icons/react";
 import { useState, useRef, useEffect } from "react";
 import type { Snapshot, Task, VisualState } from "./types";
 import { api, message } from "./api";
 import { localDay, daysOverdue, groupTasks, isQuietTime } from "./domain";
 import { deadlineLabel, isTaskOverdue } from "./deadlines";
+import { plannedLooks, renderedPet } from "./looks";
 import { Sprite, pets } from "./Pet";
 import { TaskEditor } from "./TaskEditor";
 import { Settings } from "./Settings";
 import { Wardrobe } from "./Wardrobe";
-import { Membership } from "./Membership";
+import { isTaskPaused } from "./taskTiming";
 export function TaskPanel({
   snapshot,
   onSnapshot,
   notificationWarning,
   animation,
+  panelVisible = true,
 }: {
   snapshot: Snapshot;
   onSnapshot: (next: Snapshot) => void;
   notificationWarning?: string;
   animation?: VisualState | null;
+  panelVisible?: boolean;
 }) {
   const [showActions, setShowActions] = useState(false);
   const [previewStatus, setPreviewStatus] = useState("");
@@ -55,7 +57,7 @@ export function TaskPanel({
       setError(message(e));
     }
   }
-  const [view, setView] = useState<"tasks" | "settings" | "editor" | "wardrobe" | "membership">("tasks");
+  const [view, setView] = useState<"tasks" | "settings" | "editor" | "wardrobe">("tasks");
   const [editing, setEditing] = useState<Task>();
   const [completed, setCompleted] = useState(false);
   const taskPage = useRef<HTMLDivElement>(null);
@@ -63,12 +65,22 @@ export function TaskPanel({
   const [pageSelection, setPageSelection] = useState({ key: "", index: 0 });
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [quitting, setQuitting] = useState(false);
+  const [quitError, setQuitError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [snoozing, setSnoozing] = useState<string | null>(null);
   const today = localDay();
   const groups = groupTasks(snapshot.tasks);
   const todos = Object.values(groups).flat();
-  const listed = completed ? snapshot.tasks.filter(task => task.status === "completed") : todos;
+  const currentTaskId = todos.find(task => task.id === snapshot.settings.focusId)?.id ?? null;
+  const completedTasks = snapshot.tasks.filter(task => task.status === "completed").sort((a,b) => new Date(b.completedAt ?? b.updatedAt).getTime() - new Date(a.completedAt ?? a.updatedAt).getTime() || a.id.localeCompare(b.id));
+  const listed = completed ? completedTasks.slice(0,15) : todos;
+  useEffect(() => {
+    if (panelVisible) {
+      setCompleted(false);
+      setPageSelection({ key: "", index: 0 });
+    }
+  }, [panelVisible]);
   const pageKey = completed ? "completed" : `todo:${groups.overdue.map(task => task.id).join("|")}`;
   useEffect(() => setPageSelection({ key: pageKey, index: 0 }), [pageKey, pageSize]);
   useEffect(() => {
@@ -105,6 +117,17 @@ export function TaskPanel({
       setError(message(e));
     } finally {
       setBusy(null);
+    }
+  }
+  async function quit() {
+    setQuitting(true);
+    setQuitError("");
+    try {
+      await api.quit();
+    } catch (e) {
+      setQuitError(message(e));
+    } finally {
+      setQuitting(false);
     }
   }
   const edit = (task?: Task) => {
@@ -170,26 +193,13 @@ export function TaskPanel({
           {task.status === "todo" && (
             <div className="task-actions">
               {snoozing !== task.id && <><button
-                aria-label={`${snapshot.settings.focusId === task.id ? "取消当前" : "设为当前"} ${task.title}`}
-                title={snapshot.settings.focusId === task.id ? "取消当前任务标记" : "在桌宠上固定显示正在做的任务；逾期提醒同时保留，不启动计时"}
-                disabled={busy === task.id}
-                onClick={() =>
-                  void act(task.id, () =>
-                    api.focus(
-                      snapshot.settings.focusId === task.id ? null : task.id,
-                    ),
-                  )
-                }
+                aria-label={`${currentTaskId === task.id ? "暂停" : isTaskPaused(task) ? "继续做" : "开始做"} ${task.title}`}
+                title={currentTaskId === task.id ? "暂停并保留用时，可以开始其他任务" : currentTaskId ? "请先暂停或完成正在做的任务" : "开始处理这项任务"}
+                disabled={busy === task.id || (currentTaskId !== null && currentTaskId !== task.id)}
+                onClick={() => void act(task.id, () => currentTaskId === task.id ? api.pause(task.id) : api.focus(task.id))}
               >
-                <Star
-                  size={14}
-                  weight={
-                    snapshot.settings.focusId === task.id ? "fill" : "regular"
-                  }
-                />
-                {snapshot.settings.focusId === task.id
-                  ? "取消当前"
-                  : "设为当前"}
+                {currentTaskId === task.id ? <Pause size={14} weight="fill" /> : <Play size={14} weight="fill" />}
+                {currentTaskId === task.id ? "暂停" : isTaskPaused(task) ? "继续做" : "开始做"}
               </button>
               <button
                 aria-label={`稍后提醒 ${task.title}`}
@@ -239,7 +249,6 @@ export function TaskPanel({
             <div><b>Task Sprite</b><small>你的桌面任务伙伴</small></div>
           </div>
           <div className="window-actions">
-            {view === "tasks" && <button className="annual-entry" aria-label="年卡与云服务" onClick={() => setView("membership")}><Crown size={17} /><span>年卡</span></button>}
             <button
               aria-label="设置"
               onClick={() => {
@@ -248,13 +257,10 @@ export function TaskPanel({
             >
               <GearSix size={21} />
             </button>
-            <button aria-label="收起面板" onClick={() => void api.hide()}>
-              <Minus size={22} />
-            </button>
           </div>
         </header>
         <div className={`panel-content ${view === "tasks" && (completed ? snapshot.tasks.every(task => task.status !== "completed") : todos.length === 0) ? "empty-view" : view === "tasks" ? "paged-view" : ""} ${notificationWarning ? "has-notice" : ""}`}>
-          {view === "membership" ? <Membership backLabel="返回任务" onClose={() => setView("tasks")} /> : view === "wardrobe" ? <Wardrobe settings={snapshot.settings} onChange={onSnapshot} onClose={() => setView("tasks")} /> : view === "editor" ? (
+          {view === "wardrobe" ? <Wardrobe looksExpiresAt={snapshot.looksExpiresAt} onActivate={() => setView("settings")} settings={snapshot.settings} onChange={onSnapshot} onClose={() => setView("tasks")} /> : view === "editor" ? (
             <TaskEditor
               key={editing?.id ?? "new"}
               task={editing}
@@ -308,6 +314,7 @@ export function TaskPanel({
                   新增
                 </button>
               </div>
+              {completed && completedTasks.length > 0 && <p className="history-note">仅展示最近15条已完成任务，更早记录可在设置中导出。</p>}
               <div className="task-list-area" ref={taskPage}>
               {completed ? (
                 <div className="task-page">
@@ -323,7 +330,7 @@ export function TaskPanel({
                   {todos.length === 0 ? (
                     <div className="empty">
                       <Sprite
-                        pet={snapshot.settings.pet}
+                        pet={renderedPet(snapshot.settings.pet, snapshot.looksExpiresAt)}
                         still={snapshot.settings.reduceMotion}
                         state={
                           animation ??
@@ -377,11 +384,11 @@ export function TaskPanel({
             </div>
           )}
         </div>
-        {view !== "wardrobe" && view !== "membership" && <footer className="companions">
+        {view !== "settings" && view !== "wardrobe" && <footer className={`companions${view === "editor" ? " compact-companions" : ""}`}>
           <div className="footer-label">
             <span>今天，谁陪你？</span>
             {view === "tasks" && <button className="text-button icon-text" onClick={() => setView("wardrobe")}><Palette size={15} />更多装扮</button>}
-            <button
+            {view === "tasks" && <button
               className="text-button icon-text"
               aria-label="试试动作"
               aria-expanded={showActions}
@@ -389,9 +396,13 @@ export function TaskPanel({
             >
               <Play size={16} />
               试试动作
-            </button>
+            </button>}
           </div>
           <div className="pet-options">
+            {plannedLooks.filter(look => look.id === snapshot.settings.pet).map(look => <button key={look.id} className="pet-option selected" aria-label={`当前装扮 ${look.name}`} aria-pressed="true" onClick={() => setView("wardrobe")}>
+              <Sprite pet={renderedPet(look.id, snapshot.looksExpiresAt)} state={isQuietTime(snapshot.settings.quietStart,snapshot.settings.quietEnd) ? "rest" : animation ?? (currentTaskId ? "working" : "idle")} still={snapshot.settings.reduceMotion || isQuietTime(snapshot.settings.quietStart,snapshot.settings.quietEnd)} />
+              <span>{look.name}</span>
+            </button>)}
             {pets.map((p) => (
               <button
                 key={p.id}
@@ -419,7 +430,7 @@ export function TaskPanel({
               </button>
             ))}
           </div>
-          {showActions && (
+          {view === "tasks" && showActions && (
             <div className="animation-controls" aria-label="动作预览">
               {(
                 [
@@ -427,6 +438,8 @@ export function TaskPanel({
                   { id: "reminder", label: "提醒" },
                   { id: "celebrate", label: "庆祝" },
                   { id: "rest", label: "休息" },
+                  { id: "working", label: "工作" },
+                  { id: "interaction", label: "互动" },
                 ] as const
               ).map((a) => (
                 <button
@@ -446,6 +459,11 @@ export function TaskPanel({
             </p>
           )}
         </footer>}
+        <footer className="panel-bottom-bar">
+          {quitError && <span role="alert" title={quitError}>{quitError}</span>}
+          <a className="powered-by" href="https://tbtparent.me" onClick={event => { event.preventDefault(); void api.openWebsite().catch(e => setQuitError(message(e))); }}>Powered by TBTParent</a>
+          <button className="text-button icon-text" aria-label="退出 Task Sprite" disabled={quitting} onClick={() => void quit()}><SignOut size={15}/>{quitting ? "正在退出…" : "退出 Task Sprite"}</button>
+        </footer>
       </div>
     </div>
   );

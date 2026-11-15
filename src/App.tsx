@@ -33,7 +33,7 @@ export function App() {
           (state: unknown) => {
             if (
               typeof state === "string" &&
-              ["idle", "reminder", "celebrate", "rest"].includes(state)
+              ["idle", "reminder", "celebrate", "rest", "working", "interaction"].includes(state)
             )
               play(state as VisualState);
           },
@@ -41,6 +41,7 @@ export function App() {
         ["snapshot", (s: Snapshot) => setSnapshot(s)],
         ["panel-visibility", (visible: boolean) => { visibilityVersion++; setPanelVisible(visible); }],
         ["clock", () => setClock((c) => c + 1)],
+        ["sync-status", () => { void refresh().catch(() => {}); }],
         [
           "celebrate",
           () => {
@@ -125,6 +126,7 @@ export function App() {
     <TaskPanel
       snapshot={snapshot}
       onSnapshot={setSnapshot}
+      panelVisible={panelVisible}
       notificationWarning={notificationWarning}
       animation={animation}
     />

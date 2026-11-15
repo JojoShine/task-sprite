@@ -1,11 +1,11 @@
-import type { PetId } from "./types";
-export type PremiumLook = {
-  id: string;
+import type { FreePetId, PetId } from "./types";
+export type PlannedLook = {
+  id: PetId;
   name: string;
   kind: "角色" | "皮肤";
-  preview: { src: string } | { pet: PetId; filter: string };
+  preview: { src: string } | { pet: FreePetId; filter: string };
 };
-export const premiumLooks: PremiumLook[] = [
+export const plannedLooks: PlannedLook[] = [
   { id: "fox", name: "赤狐", kind: "角色", preview: { src: "/looks/fox.svg" } },
   { id: "panda", name: "团子熊猫", kind: "角色", preview: { src: "/looks/panda.svg" } },
   { id: "mint-ghost", name: "薄荷幽灵", kind: "皮肤", preview: { pet: "ghost", filter: "hue-rotate(240deg) saturate(.75)" } },
@@ -13,3 +13,12 @@ export const premiumLooks: PremiumLook[] = [
   { id: "snow-shiba", name: "霜雪柴犬", kind: "皮肤", preview: { pet: "shiba", filter: "grayscale(.8) brightness(1.15)" } },
   { id: "cream-cat", name: "奶油橘猫", kind: "皮肤", preview: { pet: "cat", filter: "saturate(.5) brightness(1.12)" } },
 ];
+
+export function hasLicensedLooks(expiresAt?: string | null) {
+  return !!expiresAt && Date.parse(expiresAt) > Date.now();
+}
+export function renderedPet(pet: PetId, expiresAt?: string | null): PetId {
+  if (hasLicensedLooks(expiresAt)) return pet;
+  const look = plannedLooks.find(item => item.id === pet);
+  return look ? ("pet" in look.preview ? look.preview.pet : pet === "fox" ? "shiba" : "cat") : pet;
+}
