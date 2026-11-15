@@ -1296,9 +1296,6 @@ button:not(:disabled):active { opacity: .75; }
 .wardrobe { display: flex; flex-direction: column; gap: 12px; padding-bottom: 3px; }
 .wardrobe > .section-heading { margin-bottom: 0; gap: 8px; }
 .wardrobe-intro { font-size: 13px; line-height: 20px; color: var(--muted); }
-.wardrobe-tabs { display: flex; gap: 8px; }
-.wardrobe-tabs > button { display: flex; align-items: center; justify-content: center; gap: 5px; flex: 1; padding: 8px; font-size: 14px; line-height: 18px; background: var(--surface); border: 1px solid transparent; clip-path: var(--pixel-cut); }
-.wardrobe-tabs > button[aria-pressed="true"] { background: var(--surface-strong); border-color: var(--border); }
 .look-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .look-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 120px; padding: 6px; min-width: 0; background: var(--surface); border: 2px solid transparent; clip-path: var(--pixel-cut); }
 .look-tile:hover { background: var(--surface-hover); border-color: var(--line); }
@@ -1315,7 +1312,6 @@ button:not(:disabled):active { opacity: .75; }
 .wardrobe-note > button { flex-shrink: 0; font-size: 12px; }
 @media (max-height: 560px) {
   .wardrobe { gap: 6px; }
-  .wardrobe-tabs > button { padding: 6px; }
   .look-grid { gap: 8px; }
   .look-tile { height: 96px; }
   .look-tile .look-preview { height: 48px; }
@@ -1391,20 +1387,16 @@ button:not(:disabled):active { opacity: .75; }
 .sync-deactivate .text-button { display:inline-flex; align-items:center; gap:6px; min-height:30px; padding:4px 0; font-size:12px; color:var(--muted); }
 .sync-deactivate .text-button:hover { color:var(--red); }
 
-/* Licensed vectors share the existing pixel cadence, with articulated poses. */
-.vector-sprite { background: none; position: relative; }
-.vector-sprite > svg { width: 100%; height: 100%; overflow: visible; }
+/* All companions share pixel sheets and unobstructed state animations. */
 .sprite { position: relative; }
 .pose-prop { position:absolute; inset:0; width:100%; height:100%; }
-.vector-sprite:not(.still) { animation: breathe 3.2s steps(3,end) infinite; }
 .sprite[data-state="working"]:not(.still) { animation: work-tap 1.2s steps(2,end) infinite; }
 .sprite[data-state="interaction"]:not(.still) { animation: nudge .6s steps(3,end) 3; }
-.vector-sprite[data-state="reminder"]:not(.still) { animation: nudge 1.4s steps(3,end) infinite; }
-.vector-sprite[data-state="celebrate"]:not(.still) { animation: hop .8s steps(4,end) infinite; }
-.vector-sprite[data-state="rest"]:not(.still) { animation: rest-breathe 4s steps(2,end) infinite; }
-.vector-sprite[data-state="working"]:not(.still) .character-arm { animation: typing .6s steps(2,end) infinite; }
 @keyframes work-tap { 0%,100% { transform:translateY(0); } 50% { transform:translateY(2px); } }
-@keyframes typing { 50% { transform:translateY(-1px); } }
 @media (prefers-reduced-motion: reduce) {
-  .sprite:not(.still), .vector-sprite .character-arm { animation: none !important; }
+  .sprite:not(.still) { animation: none !important; }
 }
+
+.wardrobe-tabs { display:flex; gap:8px; }
+.wardrobe-tabs > button { flex:1; padding:8px 4px; font-size:13px; background:var(--surface); border:1px solid transparent; clip-path:var(--pixel-cut); }
+.wardrobe-tabs > button[aria-pressed="true"] { background:var(--surface-strong); border-color:var(--border); }

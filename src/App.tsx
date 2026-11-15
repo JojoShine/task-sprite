@@ -7,7 +7,7 @@ import { Pet } from "./Pet";
 import { TaskPanel } from "./TaskPanel";
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
-  useTheme(snapshot?.settings.theme);
+  useTheme(snapshot?.settings.theme, snapshot?.settings.skin, snapshot?.looksExpiresAt);
   const [error, setError] = useState("");
   const [panelVisible, setPanelVisible] = useState(false);
   const [animation, setAnimation] = useState<VisualState | null>(null);

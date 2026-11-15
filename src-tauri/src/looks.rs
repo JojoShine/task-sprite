@@ -59,7 +59,9 @@ mod tests {
             let mut settings = store.snapshot().unwrap().settings;
             settings.pet = pet.into();
             store.set_settings(settings).unwrap();
-            assert_eq!(store.snapshot().unwrap().settings.pet,pet);
+            let saved = store.snapshot().unwrap().settings;
+            assert_eq!(saved.pet,pet);
+            assert_eq!(saved.skin,"default");
         }
     }
     #[test]
@@ -139,6 +141,62 @@ mod tests {
             super::reject_looks_if_current(&store,"looks-test",2,2,error).unwrap();
             assert!(store.looks_expires_at().unwrap().is_none());
         }
+    }
+
+    #[test]
+    fn independent_skin_roundtrips_without_replacing_partner() {
+        let mut store = licensed();
+        for skin in ["mint-ghost","sunset-robot","snow-shiba","cream-cat"] {
+            let mut raw=serde_json::to_value(store.snapshot().unwrap().settings).unwrap();
+            raw["pet"]=serde_json::json!("panda");
+            raw["skin"]=serde_json::json!(skin);
+            let settings=serde_json::from_value(raw).unwrap();
+            store.set_settings(settings).unwrap();
+            let saved=serde_json::to_value(store.snapshot().unwrap().settings).unwrap();
+            assert_eq!(saved["pet"],"panda");
+            assert_eq!(saved["skin"],skin);
+        }
+        store.sync_cache_license(None).unwrap();
+        let mut raw=serde_json::to_value(store.snapshot().unwrap().settings).unwrap();
+        raw["skin"]=serde_json::json!("mint-ghost");
+        assert!(store.set_settings(serde_json::from_value(raw).unwrap()).is_err());
+        let mut settings=store.snapshot().unwrap().settings;
+        settings.show_hint=false;
+        store.set_settings(settings).unwrap();
+    }
+    #[test]
+    fn original_palette_companion_survives_upgrade_without_changing_skin() {
+        let store=licensed();
+        let mut raw=serde_json::to_value(store.snapshot().unwrap().settings).unwrap();
+        raw.as_object_mut().unwrap().remove("skin");
+        raw["pet"]=serde_json::json!("mint-ghost");
+        store.conn.execute("UPDATE settings SET payload=?1 WHERE id=1", [raw.to_string()]).unwrap();
+        let saved=serde_json::to_value(store.snapshot().unwrap().settings).unwrap();
+        assert_eq!(saved["pet"],"mint-ghost");
+        assert_eq!(saved["skin"],"default");
+    }
+
+    #[test]
+    fn colored_partners_and_interface_skins_roundtrip_independently() {
+        let path=std::env::temp_dir().join(format!("task-sprite-independent-{}.db",uuid::Uuid::new_v4()));
+        {
+            let mut store=Store::open(&path).unwrap();
+            store.sync_link("looks-test").unwrap();
+            store.sync_cache_license(licensed().sync_status().unwrap().license.as_ref()).unwrap();
+            for pet in ["mint-ghost","sunset-robot","snow-shiba","cream-cat"] {
+                for skin in ["default","mint-ghost","sunset-robot","snow-shiba","cream-cat"] {
+                    let mut settings=store.snapshot().unwrap().settings;
+                    settings.pet=pet.into();settings.skin=skin.into();
+                    store.set_settings(settings).unwrap();
+                    let saved=store.snapshot().unwrap().settings;
+                    assert_eq!(saved.pet,pet);assert_eq!(saved.skin,skin);
+                }
+            }
+        }
+        let reopened=Store::open(&path).unwrap();
+        let saved=reopened.snapshot().unwrap().settings;
+        assert_eq!(saved.pet,"cream-cat");assert_eq!(saved.skin,"cream-cat");
+        drop(reopened);std::fs::remove_file(path).unwrap();
     }
 
 }

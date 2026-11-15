@@ -122,6 +122,7 @@ async fn export_tasks(app: tauri::AppHandle) -> Result<Option<String>> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Preferences {
     pet: Option<String>,
+    skin: Option<String>,
     notifications: Option<bool>,
     summary_time: Option<String>,
     quiet_start: Option<String>,
@@ -138,6 +139,10 @@ fn update_preferences(app: tauri::AppHandle, patch: Preferences) -> Result<Snaps
     if let Some(v) = patch.pet {
         s.require_look(&v)?;
         st.pet = v
+    }
+    if let Some(v) = patch.skin {
+        if v != "default" { s.require_look(&v)?; }
+        st.skin = v;
     }
     if let Some(v) = patch.notifications {
         st.notifications = v

@@ -444,39 +444,34 @@ it("keeps a premium preference but renders its free fallback until renewal", () 
   rerender(<Pet snapshot={{...selected,looksExpiresAt:"2099-01-01T00:00:00Z"}} animation={null} onSnapshot={() => {}} />);
   expect(container.querySelector(".sprite")?.getAttribute("data-pet")).toBe("snow-shiba");
 });
-it.each(["idle","working","rest","reminder","celebrate","interaction"] as const)("gives fox and panda a distinct %s pose", state => {
-  for (const pet of ["fox","panda"] as const) {
-    const {container,unmount} = render(<Sprite pet={pet} state={state} />);
-    expect(container.querySelector(".sprite")?.getAttribute("data-state")).toBe(state);
-    expect(container.querySelector(".sprite")?.getAttribute("data-pet")).toBe(pet);
-    expect(container.querySelector(".sprite svg")).toBeTruthy();
+it.each(["fox", "panda"] as const)("renders %s with the same pixel sheet and six state hooks as the original companions", pet => {
+  const frames = new Set();
+  for (const state of ["idle", "working", "rest", "reminder", "celebrate", "interaction"] as const) {
+    const {container, unmount} = render(<Sprite pet={pet} state={state} />);
+    const sprite = container.querySelector(".sprite") as HTMLElement;
+    expect(sprite.style.backgroundImage).toContain(`/pets/${pet}.png`);
+    expect(sprite.getAttribute("data-state")).toBe(state);
+    expect(sprite.classList.contains("vector-sprite")).toBe(false);
+    expect(sprite.querySelector(".character-body")).toBeNull();
+    frames.add(sprite.style.backgroundPositionX);
     unmount();
   }
-});
-
-it("gives each licensed vector six different rendered poses", () => {
-  const states = ["idle","working","rest","reminder","celebrate","interaction"] as const;
-  for (const pet of ["fox","panda"] as const) {
-    const poses = states.map(state => {
-      const {container,unmount} = render(<Sprite pet={pet} state={state} />);
-      const art = container.querySelector("svg")?.innerHTML;
-      unmount();
-      return art;
-    });
-    expect(new Set(poses).size).toBe(6);
-  }
+  expect(frames.size).toBe(4);
 });
 it.each(["mint-ghost","sunset-robot","snow-shiba","cream-cat"] as const)("keeps %s animated across all six states using the base pixel sheet", pet => {
   const poses = new Set();
+  const states = new Set();
   for (const state of ["idle","working","rest","reminder","celebrate","interaction"] as const) {
     const {container,unmount} = render(<Sprite pet={pet} state={state} />);
     const sprite = container.querySelector(".sprite") as HTMLElement;
     expect(sprite.style.backgroundImage).toMatch(/pets\/(ghost|robot|shiba|cat)\.png/);
     expect(sprite.style.filter).toBeTruthy();
-    poses.add(sprite.style.backgroundPositionX + (sprite.querySelector("svg")?.innerHTML ?? ""));
+    poses.add(sprite.style.backgroundPositionX);
+    states.add(sprite.getAttribute("data-state"));
     unmount();
   }
-  expect(poses.size).toBe(6);
+  expect(poses.size).toBe(4);
+  expect(states.size).toBe(6);
 });
 it("keeps quiet hours in a static rest pose despite completion events and clicks", () => {
   const quiet = {...snapshot,settings:{...snapshot.settings,pet:"fox" as const,quietStart:"00:00",quietEnd:"23:59"},looksExpiresAt:"2099-01-01T00:00:00Z"};
@@ -485,4 +480,11 @@ it("keeps quiet hours in a static rest pose despite completion events and clicks
   const sprite = container.querySelector(".sprite")!;
   expect(sprite.getAttribute("data-state")).toBe("rest");
   expect(sprite.classList.contains("still")).toBe(true);
+});
+
+it.each(["cat","shiba","robot","ghost","mint-ghost","sunset-robot","snow-shiba","cream-cat","fox","panda"] as const)("keeps %s unobstructed while working without a desk or keyboard overlay", pet => {
+  const {container} = render(<Sprite pet={pet} state="working" />);
+  const sprite = container.querySelector(".sprite")!;
+  expect(sprite.querySelector(".pose-prop")).toBeNull();
+
 });

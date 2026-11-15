@@ -1,6 +1,11 @@
 import { useEffect } from "react";
-import type { Theme } from "./types";
-export function useTheme(preference: Theme = "system") {
+import { renderedSkin } from "./looks";
+import type { SkinId, Theme } from "./types";
+export function useTheme(preference: Theme = "system", skin?: SkinId, expiresAt?: string | null) {
+  const effectiveSkin = renderedSkin(skin, expiresAt);
+  useEffect(() => {
+    document.documentElement.dataset.skin = effectiveSkin;
+  }, [effectiveSkin]);
   useEffect(() => {
     const media = window.matchMedia?.("(prefers-color-scheme: dark)");
     const apply = () => {

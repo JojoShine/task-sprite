@@ -17,7 +17,7 @@ import type { Snapshot, Task, VisualState } from "./types";
 import { api, message } from "./api";
 import { localDay, daysOverdue, groupTasks, isQuietTime } from "./domain";
 import { deadlineLabel, isTaskOverdue } from "./deadlines";
-import { plannedLooks, renderedPet } from "./looks";
+import { renderedPet } from "./looks";
 import { Sprite, pets } from "./Pet";
 import { TaskEditor } from "./TaskEditor";
 import { Settings } from "./Settings";
@@ -399,10 +399,6 @@ export function TaskPanel({
             </button>}
           </div>
           <div className="pet-options">
-            {plannedLooks.filter(look => look.id === snapshot.settings.pet).map(look => <button key={look.id} className="pet-option selected" aria-label={`当前装扮 ${look.name}`} aria-pressed="true" onClick={() => setView("wardrobe")}>
-              <Sprite pet={renderedPet(look.id, snapshot.looksExpiresAt)} state={isQuietTime(snapshot.settings.quietStart,snapshot.settings.quietEnd) ? "rest" : animation ?? (currentTaskId ? "working" : "idle")} still={snapshot.settings.reduceMotion || isQuietTime(snapshot.settings.quietStart,snapshot.settings.quietEnd)} />
-              <span>{look.name}</span>
-            </button>)}
             {pets.map((p) => (
               <button
                 key={p.id}

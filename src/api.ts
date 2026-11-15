@@ -26,6 +26,7 @@ export const api = {
       Pick<
         Settings,
         | "pet"
+        | "skin"
         | "notifications"
         | "summaryTime"
         | "quietStart"

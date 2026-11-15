@@ -273,10 +273,14 @@ it("pauses the active task and permits another task after the saved snapshot arr
   expect(screen.getByRole("button",{name:`继续做 ${current.title}`})).toBeTruthy();
 });
 
-it("shows the selected licensed companion in the task footer and falls back on expiry", () => {
-  const selected = {...snapshot,looksExpiresAt:"2099-01-01T00:00:00Z",settings:{...snapshot.settings,pet:"panda" as const}};
-  const {container,rerender} = render(<TaskPanel snapshot={selected} onSnapshot={() => {}} />);
-  expect(screen.getByRole("button", {name:"当前装扮 团子熊猫"}).querySelector(".sprite")?.getAttribute("data-pet")).toBe("panda");
-  rerender(<TaskPanel snapshot={{...selected,looksExpiresAt:null}} onSnapshot={() => {}} />);
-  expect(container.querySelector('[aria-label="当前装扮 团子熊猫"] .sprite')?.getAttribute("data-pet")).toBe("cat");
+it.each(["fox", "panda", "mint-ghost", "sunset-robot", "snow-shiba", "cream-cat"] as const)("keeps %s out of the four free companion shortcuts", pet => {
+  const selected = {...snapshot,looksExpiresAt:"2099-01-01T00:00:00Z",settings:{...snapshot.settings,pet}};
+  const {container} = render(<TaskPanel snapshot={selected} onSnapshot={() => {}} />);
+  const footer = container.querySelector(".pet-options")!;
+  expect(footer.querySelectorAll("button")).toHaveLength(4);
+  expect(Array.from(footer.querySelectorAll(".sprite")).map(s => s.getAttribute("data-pet"))).toEqual(["cat", "shiba", "robot", "ghost"]);
+  expect(screen.queryByRole("button", {name:/^当前装扮 /})).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name:"更多装扮"}));
+  expect(screen.getByRole("button", {name:"选择装扮 赤狐"})).toBeTruthy();
+  expect(screen.queryByRole("button", {name:/^选择免费伙伴 /})).toBeNull();
 });

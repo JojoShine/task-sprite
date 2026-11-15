@@ -56,6 +56,8 @@ pub struct TaskInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Settings {
     pub pet: String,
+    #[serde(default = "default_skin")]
+    pub skin: String,
     pub focus_id: Option<String>,
     pub notifications: bool,
     pub summary_time: String,
@@ -68,6 +70,7 @@ pub struct Settings {
     pub pet_x: Option<f64>,
     pub pet_y: Option<f64>,
 }
+fn default_skin() -> String { "default".into() }
 fn default_theme() -> String {
     "system".into()
 }
@@ -75,6 +78,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             pet: "shiba".into(),
+            skin: default_skin(),
             focus_id: None,
             notifications: true,
             summary_time: "09:00".into(),
@@ -206,10 +210,11 @@ impl Store {
             .conn
             .query_row("SELECT payload FROM settings WHERE id=1", [], |r| r.get(0))
             .map_err(err)?;
+        let settings: Settings = serde_json::from_str(&raw).map_err(err)?;
         Ok(Snapshot {
             looks_expires_at: self.looks_expires_at()?,
             tasks,
-            settings: serde_json::from_str(&raw).map_err(err)?,
+            settings,
         })
     }
     pub fn save_task(&mut self, i: TaskInput) -> Result<Task> {
@@ -297,6 +302,8 @@ impl Store {
         tx.commit().map_err(err)
     }
     pub fn set_settings(&mut self, s: Settings) -> Result<()> {
+        if !["default", "mint-ghost", "sunset-robot", "snow-shiba", "cream-cat"].contains(&s.skin.as_str()) { return Err("请选择内置皮肤".into()); }
+        if self.snapshot()?.settings.skin != s.skin && s.skin != "default" { self.require_look(&s.skin)?; }
         if !["system", "light", "dark"].contains(&s.theme.as_str()) {
             return Err("请选择跟随系统、浅色或深色主题".into());
         }

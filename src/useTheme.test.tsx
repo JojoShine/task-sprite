@@ -17,3 +17,20 @@ it("follows system changes until an explicit preference overrides them", () => {
   expect(document.documentElement.dataset.theme).toBe("light");
   unmount(); expect(listeners.size).toBe(0);
 });
+
+it("applies a licensed skin to the shared document without changing dark mode and falls back on expiry", () => {
+  const {rerender} = renderHook(({expiry}) => useTheme("dark", "mint-ghost", expiry), {initialProps:{expiry:"2099-01-01T00:00:00Z"}});
+  expect(document.documentElement.dataset.skin).toBe("mint-ghost");
+  expect(document.documentElement.dataset.theme).toBe("dark");
+  rerender({expiry:"2020-01-01T00:00:00Z"});
+  expect(document.documentElement.dataset.skin).toBe("default");
+});
+it("drops an expired offline skin on a clock render even when the stored preference is unchanged", () => {
+  const now=vi.spyOn(Date,"now").mockReturnValue(Date.parse("2098-01-01T00:00:00Z"));
+  const {rerender}=renderHook(()=>useTheme("light","mint-ghost","2099-01-01T00:00:00Z"));
+  expect(document.documentElement.dataset.skin).toBe("mint-ghost");
+  now.mockReturnValue(Date.parse("2100-01-01T00:00:00Z"));
+  rerender();
+  expect(document.documentElement.dataset.skin).toBe("default");
+  now.mockRestore();
+});
