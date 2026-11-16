@@ -24,7 +24,7 @@ try {
   run(signer,[p12,password,app,'io.jojoshine.tasksprite']);
   run('/usr/bin/codesign',['--verify','--deep','--strict',app]);
   const prefix = path.join(temporary,'certificate');
-  run('/usr/bin/codesign',['-d','--extract-certificates',prefix,app]);
+  run('/usr/bin/codesign',['-d','--extract-certificates='+prefix,app]);
   const fingerprint = run('openssl',['x509','-inform','DER','-in',prefix+'0','-noout','-fingerprint','-sha1']).trim().split('=').at(-1).replaceAll(':','').toLowerCase();
   if (fingerprint !== metadata.callerCertificateSha1) throw Error('Original macOS signing identity mismatch');
   const out = path.resolve('release-packages');mkdirSync(out,{recursive:true});
