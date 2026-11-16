@@ -62,3 +62,5 @@
 /* Height is measured from the task content, with one stable text size at every window height. */
 .panel-content.paged-view,.panel-content.empty-view { container-type:inline-size; }
 .empty-view .empty { flex:none; padding:16px 0; }
+.settings { gap:12px; padding-top:0; }
+.settings > .section-heading { margin-bottom:0; }
