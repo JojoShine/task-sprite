@@ -1,5 +1,5 @@
 use crate::store::{Result, Store};
-use chrono::{DateTime, FixedOffset, NaiveTime, Timelike};
+use chrono::{DateTime, FixedOffset, NaiveDateTime, NaiveTime, Timelike};
 use std::collections::BTreeSet;
 #[derive(Debug)]
 pub struct Notice {
@@ -31,16 +31,16 @@ pub fn plan(s: &Store, now: DateTime<FixedOffset>) -> Result<Option<Notice>> {
     }
     let today = now.date_naive().to_string();
     let todos: Vec<_> = snap.tasks.iter().filter(|t| t.status == "todo").collect();
-    let snoozed_ids: Vec<_> = s
-        .snoozes()?
-        .into_iter()
+    let snoozes = s.snoozes()?;
+    let snoozed_ids: Vec<_> = snoozes
+        .iter()
         .filter(|(id, at)| *at <= now && todos.iter().any(|t| &t.id == id))
-        .map(|(id, _)| id)
+        .map(|(id, _)| id.clone())
         .collect();
     let summary_tasks: Vec<_> = if m >= minutes(&st.summary_time) && !s.delivered(&today)? {
         todos
             .iter()
-            .filter(|t| t.due_date.as_ref().is_some_and(|d| d <= &today))
+            .filter(|t| t.due_date.as_ref().is_some_and(|d| d <= &today) && !snoozes.iter().any(|(id, at)| id == &t.id && *at > now))
             .map(|t| t.id.clone())
             .collect()
     } else {
@@ -52,11 +52,17 @@ pub fn plan(s: &Store, now: DateTime<FixedOffset>) -> Result<Option<Notice>> {
         Some(today.clone())
     };
     let mut deadlines = Vec::new();
-    let clock = now.format("%H:%M").to_string();
     for t in &todos {
-        if let (Some(date), Some(time)) = (&t.due_date, &t.due_time) {
-            let key = format!("{date}T{time}");
-            if date == &today && time <= &clock && !s.deadline_delivered(&t.id, &key)? {
+        if snoozes.iter().any(|(id, at)| id == &t.id && *at > now) { continue; }
+        if let Some(date) = &t.due_date {
+            let time = t.due_time.as_deref().unwrap_or("17:00");
+            let deadline = NaiveDateTime::parse_from_str(&format!("{date}T{time}"), "%Y-%m-%dT%H:%M")
+                .map_err(|e| e.to_string())?;
+            let elapsed = now.naive_local().signed_duration_since(deadline - chrono::Duration::hours(2));
+            if elapsed.num_seconds() < 0 { continue; }
+            // One durable key per scheduled half-hour slot, including overdue slots.
+            let key = format!("{date}T{time}/{}", elapsed.num_seconds() / 1800);
+            if !s.deadline_delivered(&t.id, &key)? {
                 deadlines.push((t.id.clone(), key));
             }
         }

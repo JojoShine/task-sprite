@@ -1,3 +1,4 @@
+mod updates;
 mod export;
 mod notifications;
 mod reminders;
@@ -8,6 +9,8 @@ mod sync_http;
 mod sync_credentials;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod reminder_revision_tests;
 mod windows;
 use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 use store::{Result, Snapshot, Store, TaskInput};
@@ -130,12 +133,15 @@ struct Preferences {
     reduce_motion: Option<bool>,
     show_hint: Option<bool>,
     theme: Option<String>,
+    panel_pinned: Option<bool>,
+    card_pinned: Option<bool>,
 }
 #[tauri::command]
 fn update_preferences(app: tauri::AppHandle, patch: Preferences) -> Result<Snapshot> {
     let state = locked(&app)?;
     let mut s = state.0.lock().map_err(|_| "数据库暂不可用")?;
     let mut st = s.snapshot()?.settings;
+    let pin_changed = patch.panel_pinned.is_some_and(|pinned| pinned != st.panel_pinned);
     if let Some(v) = patch.pet {
         s.require_look(&v)?;
         st.pet = v
@@ -165,8 +171,15 @@ fn update_preferences(app: tauri::AppHandle, patch: Preferences) -> Result<Snaps
     if let Some(v) = patch.theme {
         st.theme = v;
     }
+    if let Some(v) = patch.panel_pinned { st.panel_pinned = v; }
+    if let Some(v) = patch.card_pinned { st.card_pinned = v; }
     s.set_settings(st)?;
-    broadcast(&app, &s)
+    let snapshot = broadcast(&app, &s)?;
+    drop(s);
+    if pin_changed {
+        panel_interaction(app.clone());
+    }
+    Ok(snapshot)
 }
 #[tauri::command]
 fn set_focus(app: tauri::AppHandle, id: Option<String>) -> Result<Snapshot> {
@@ -183,6 +196,59 @@ fn pause_task(app: tauri::AppHandle, id: String) -> Result<Snapshot> {
     s.pause_task(&id)?;
     sync_http::signal();
     broadcast(&app, &s)
+}
+#[tauri::command]
+fn set_task_execution(app: tauri::AppHandle, id: String, state: String) -> Result<Snapshot> {
+    let handle = locked(&app)?;
+    let mut store = handle.0.lock().map_err(|_| "数据库暂不可用")?;
+    store.set_task_execution(&id, &state)?;
+    sync_http::signal();
+    broadcast(&app, &store)
+}
+#[tauri::command]
+fn append_task_step(app: tauri::AppHandle, id: String, content: String) -> Result<Snapshot> {
+    let handle = locked(&app)?;
+    let mut store = handle.0.lock().map_err(|_| "数据库暂不可用")?;
+    store.append_task_step(&id, &content)?;
+    sync_http::signal();
+    broadcast(&app, &store)
+}
+#[tauri::command]
+fn delete_task_step(app: tauri::AppHandle, id: String, step_id: String) -> Result<Snapshot> {
+    let handle = locked(&app)?;
+    let mut store = handle.0.lock().map_err(|_| "数据库暂不可用")?;
+    store.delete_task_step(&id, &step_id)?;
+    broadcast(&app, &store)
+}
+#[tauri::command]
+fn panel_interaction(app: tauri::AppHandle) {
+    if let Ok(mut lifecycle) = app.state::<Mutex<windows::PanelLifecycle>>().lock() {
+        lifecycle.interact();
+    }
+}
+fn panel_pinned(app: &tauri::AppHandle) -> bool {
+    app.state::<AppState>().0.lock().ok().and_then(|s| s.snapshot().ok())
+        .is_some_and(|s| s.settings.panel_pinned)
+}
+fn dismiss_panel_on_outside(app: &tauri::AppHandle) {
+    let visible = app.get_webview_window("panel").is_some_and(|w| w.is_visible().unwrap_or(false));
+    if visible && windows::hide_on_blur(panel_pinned(app), app.state::<AppState>().1.load(Ordering::Relaxed)) {
+        let _ = hide_task_panel(app);
+    }
+}
+#[cfg(target_os = "macos")]
+fn install_outside_click_monitor(app: &tauri::AppHandle) {
+    use objc2_app_kit::{NSEvent, NSEventMask};
+    let handle = app.clone();
+    let callback = block2::RcBlock::new(move |_event: std::ptr::NonNull<NSEvent>| {
+        let app = handle.clone();
+        let _ = handle.run_on_main_thread(move || dismiss_panel_on_outside(&app));
+    });
+    let mask = NSEventMask::LeftMouseDown | NSEventMask::RightMouseDown | NSEventMask::OtherMouseDown;
+    if let Some(monitor) = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(mask, &callback) {
+        // This app-lifetime mouse monitor is released with the process.
+        std::mem::forget(monitor);
+    }
 }
 #[tauri::command]
 fn snooze(app: tauri::AppHandle, id: String, minutes: i64) -> Result<()> {
@@ -257,14 +323,13 @@ fn place_panel(app: &tauri::AppHandle) -> Result<()> {
     #[cfg(not(target_os = "macos"))]
     let r = {
         let pet = pet_rect(app)?;
-        let a = monitor_rect(app, pet)?;
-        let (placed_pet, r) = windows::panel_layout(pet, a);
+        let area = monitor_rect(app, pet)?;
+        let (placed_pet, panel) = windows::panel_layout(pet, area);
         if placed_pet.x != pet.x || placed_pet.y != pet.y {
             app.get_webview_window("pet").ok_or("窗口不存在")?
-                .set_position(LogicalPosition::new(placed_pet.x, placed_pet.y))
-                .map_err(|e| e.to_string())?;
+                .set_position(LogicalPosition::new(placed_pet.x, placed_pet.y)).map_err(|e| e.to_string())?;
         }
-        r
+        panel
     };
     if let Some(w) = app.get_webview_window("panel") {
         w.set_size(LogicalSize::new(r.w, r.h))
@@ -275,6 +340,7 @@ fn place_panel(app: &tauri::AppHandle) -> Result<()> {
     Ok(())
 }
 fn show_panel(app: &tauri::AppHandle) -> Result<()> {
+    panel_interaction(app.clone());
     place_panel(app)?;
     if let Some(w) = app.get_webview_window("panel") {
         w.show().map_err(|e| e.to_string())?;
@@ -288,6 +354,7 @@ fn show_panel_from_tray(
     _rect: tauri::Rect,
     _point: PhysicalPosition<f64>,
 ) -> Result<()> {
+    panel_interaction(app.clone());
     let panel = app.get_webview_window("panel").ok_or("窗口不存在")?;
     if panel.is_visible().map_err(|e| e.to_string())? {
         return hide_task_panel(app);
@@ -321,7 +388,7 @@ fn show_panel_from_tray(
                     x: at.x + size.width / 2. - 220.,
                     y: at.y + size.height + 8.,
                     w: 440.,
-                    h: 620.,
+                    h: 740.,
                 },
                 windows::Rect {
                     x: area.position.x as f64 / scale,
@@ -390,6 +457,7 @@ fn move_pet(app: tauri::AppHandle, x: f64, y: f64) -> Result<()> {
         .map_err(|e| e.to_string())
 }
 fn hide_task_panel(app: &tauri::AppHandle) -> Result<()> {
+    panel_interaction(app.clone());
     app.get_webview_window("panel")
         .ok_or("窗口不存在")?
         .hide()
@@ -443,19 +511,77 @@ async fn notification_status(app: tauri::AppHandle) -> Result<String> {
 fn quit(app: tauri::AppHandle) {
     app.exit(0)
 }
+fn show_reminder_panel(app: &tauri::AppHandle) -> Result<()> {
+    let panel = app.get_webview_window("panel").ok_or("窗口不存在")?;
+    let visible = panel.is_visible().map_err(|e| e.to_string())?;
+    let pinned = panel_pinned(app);
+    if visible { return Ok(()); }
+    place_panel(app)?;
+    let token = app.state::<Mutex<windows::PanelLifecycle>>().lock()
+        .map_err(|_| "窗口状态暂不可用")?.open_reminder(visible, pinned);
+    // AppKit's orderFrontRegardless shows the existing panel without making it key.
+    #[cfg(target_os = "macos")]
+    {
+        let ptr = panel.ns_window().map_err(|e| e.to_string())?;
+        let native = unsafe { &*ptr.cast::<objc2_app_kit::NSWindow>() };
+        native.orderFrontRegardless();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        panel.set_focusable(false).map_err(|e| e.to_string())?;
+        let shown = panel.show().map_err(|e| e.to_string());
+        let _ = panel.set_focusable(true);
+        shown?;
+    }
+    app.emit("panel-visibility", true).map_err(|e| e.to_string())?;
+    if let Some(token) = token {
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(20));
+            let app = handle.clone();
+            let _ = handle.run_on_main_thread(move || {
+                let pinned = panel_pinned(&app);
+                let exporting = app.state::<AppState>().1.load(Ordering::Relaxed);
+                let close = app.state::<Mutex<windows::PanelLifecycle>>().lock()
+                    .map(|state| state.should_close(token, pinned, exporting)).unwrap_or(false);
+                if close { let _ = hide_task_panel(&app); }
+            });
+        });
+    }
+    Ok(())
+}
 fn tick(app: &tauri::AppHandle) {
-    let state = app.state::<AppState>();
-    let Ok(mut s) = state.0.lock() else { return };
-    match reminders::deliver(&mut s, Local::now().fixed_offset(), |n| {
-        let _ = app.emit("reminder-tasks", &n.task_ids);
-        notifications::send(app, &n.body)
-    }) {
-        Ok(true) => {
-            let _ = app.emit("reminder", ());
+    let planned = {
+        let state = app.state::<AppState>();
+        let Ok(store) = state.0.lock() else { return };
+        reminders::plan(&store, Local::now().fixed_offset())
+    };
+    match planned {
+        Ok(Some(notice)) => {
+            let handle = app.clone();
+            // The UI callback acquires the store only after the planning guard was dropped.
+            if let Err(e) = app.run_on_main_thread(move || {
+                if let Err(e) = show_reminder_panel(&handle) {
+                    let _ = handle.emit("notification-warning", e);
+                    return;
+                }
+                let _ = handle.emit("reminder-tasks", &notice.task_ids);
+                let _ = handle.emit("reminder", ());
+                if let Ok(mut store) = handle.state::<AppState>().0.lock() {
+                    if let Err(e) = store.record_delivery(&notice) {
+                        let _ = handle.emit("notification-warning", e);
+                    }
+                }
+                // OS permission denial must never suppress the in-app reminder.
+                let notify = handle.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = notifications::send(&notify, &notice.body) {
+                        let _ = notify.emit("notification-warning", e);
+                    }
+                });
+            }) { let _ = app.emit("notification-warning", e.to_string()); }
         }
-        Err(e) => {
-            let _ = app.emit("notification-warning", e);
-        }
+        Err(e) => { let _ = app.emit("notification-warning", e); }
         _ => {}
     }
 }
@@ -498,8 +624,10 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            updates::check_update, updates::install_update,
             sync_status,activate_license,pause_sync,enable_sync,sync_now,deactivate_license,resolve_sync_conflict,
             decompose_tasks,
             save_task,
@@ -509,6 +637,10 @@ pub fn run() {
             update_preferences,
             set_focus,
             pause_task,
+            set_task_execution,
+            append_task_step,
+            delete_task_step,
+            panel_interaction,
             snooze,
             toggle_panel,
             hide_panel,
@@ -534,6 +666,7 @@ pub fn run() {
                 let _ = sync_credentials::restore_summary(&store, sync_credentials::read());
             }
             app.manage(AppState(Mutex::new(store), AtomicBool::new(false)));
+            app.manage(Mutex::new(windows::PanelLifecycle::default()));
             app.manage(sync_http::SyncRuntime(AtomicBool::new(false)));
             sync_http::start_workers(app.handle().clone());
             let show = MenuItem::with_id(app, "show", "打开任务面板", true, None::<&str>)?;
@@ -578,6 +711,23 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+            #[cfg(target_os = "macos")]
+            if let Some(tray) = app.tray_by_id("main") {
+                let _ = tray.with_inner_tray_icon(|tray| {
+                    if let Some(mtm) = objc2::MainThreadMarker::new() {
+                        if let Some(status) = tray.ns_status_item() {
+                            status.setLength(28.);
+                            if let Some(button) = status.button(mtm) {
+                                if let Some(image) = button.image() {
+                                    image.setSize(objc2_foundation::NSSize::new(22., 22.));
+                                    image.setTemplate(true);
+                                    button.setImage(Some(&image));
+                                }
+                            }
+                        }
+                    }
+                });
+            }
             if let Some(w) = app.get_webview_window("pet") {
                 w.set_focusable(false)?;
                 w.set_visible_on_all_workspaces(true)?;
@@ -585,8 +735,11 @@ pub fn run() {
             if let Some(w) = app.get_webview_window("panel") {
                 w.set_visible_on_all_workspaces(true)?;
             }
+            #[cfg(target_os = "macos")]
+            install_outside_click_monitor(app.handle());
             notifications::initialize(app.handle());
             restore_pet(app.handle()).map_err(std::io::Error::other)?;
+            if panel_pinned(app.handle()) { show_panel(app.handle()).map_err(std::io::Error::other)?; }
             let h = app.handle().clone();
             std::thread::spawn(move || loop {
                 tick(&h);
@@ -609,11 +762,12 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|w, event| match event {
+            tauri::WindowEvent::Focused(true) if w.label() == "panel" => {
+                panel_interaction(w.app_handle().clone());
+            }
             tauri::WindowEvent::Focused(false) if w.label() == "panel" => {
                 // A native export sheet temporarily takes focus from its parent window.
-                if !w.app_handle().state::<AppState>().1.load(Ordering::Relaxed) {
-                    let _ = hide_task_panel(w.app_handle());
-                }
+                dismiss_panel_on_outside(w.app_handle());
             }
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
@@ -638,9 +792,7 @@ pub fn run() {
                 }
                 #[cfg(not(target_os = "macos"))]
                 if let Some(panel) = w.app_handle().get_webview_window("panel") {
-                    if panel.is_visible().unwrap_or(false) {
-                        let _ = place_panel(w.app_handle());
-                    }
+                    if panel.is_visible().unwrap_or(false) { let _ = place_panel(w.app_handle()); }
                 }
             }
             _ => {}

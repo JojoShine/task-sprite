@@ -25,7 +25,7 @@ pub fn panel_position(p: Rect, a: Rect) -> Rect {
     let body = pet_footprint(p);
     let gap = 12.;
     let w = 440_f64.min(a.w);
-    let h = 620_f64.min(a.h);
+    let h = 740_f64.min(a.h);
     let x = p.x + p.w / 2. - w / 2.;
     let above_h = (body.y - gap - a.y).min(h);
     let below_y = body.y + body.h + gap;
@@ -82,7 +82,7 @@ pub fn cocoa_menu_position(primary_height: f64, status: Rect, visible: Rect) -> 
             x: status.x + status.w / 2. - 220.,
             y: area.y.max(primary_height - status.y) + 2.,
             w: 440.,
-            h: 620.,
+            h: 740.,
         },
         area,
     )
@@ -92,3 +92,26 @@ pub fn cocoa_menu_position(primary_height: f64, status: Rect, visible: Rect) -> 
 pub fn resized_pet(p: Rect, height: f64, area: Rect) -> Rect {
     clamp(Rect { y: p.y + p.h - height, h: height, ..p }, area)
 }
+
+/// Only the window opened by a particular reminder owns its close timer.
+#[derive(Default)]
+pub struct PanelLifecycle {
+    generation: u64,
+    automatic: Option<u64>,
+}
+impl PanelLifecycle {
+    pub fn interact(&mut self) {
+        self.generation += 1;
+        self.automatic = None;
+    }
+    pub fn open_reminder(&mut self, visible: bool, pinned: bool) -> Option<u64> {
+        if visible || pinned { return None; }
+        self.generation += 1;
+        self.automatic = Some(self.generation);
+        self.automatic
+    }
+    pub fn should_close(&self, token: u64, pinned: bool, exporting: bool) -> bool {
+        !pinned && !exporting && self.automatic == Some(token)
+    }
+}
+pub fn hide_on_blur(pinned: bool, exporting: bool) -> bool { !pinned && !exporting }

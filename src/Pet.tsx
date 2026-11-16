@@ -1,11 +1,12 @@
-import { useState, useRef, useLayoutEffect } from "react";
-import { Check, Play, Pause } from "@phosphor-icons/react";
+import { useState, useRef, useLayoutEffect, useEffect } from "react";
+import { Check, Play, Pause, Hourglass, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { plannedLooks, renderedPet } from "./looks";
 import { TaskBubble } from "./TaskBubble";
 import { createDragSession } from "./drag";
 import type { PetId, VisualState, Snapshot, Task } from "./types";
 import { groupTasks, isQuietTime, daysOverdue } from "./domain";
 import { api, message } from "./api";
+import { taskWorkflow } from "./workflow";
 import { usePetMotion, type PetActivity } from "./usePetMotion";
 export const pets: {
   id: PetId;
@@ -46,7 +47,6 @@ export function Pet({
   snapshot,
   animation,
   onSnapshot,
-  panelVisible = false,
 }: {
   snapshot: Snapshot;
   animation: VisualState | null;
@@ -54,10 +54,21 @@ export function Pet({
   panelVisible?: boolean;
 }) {
   const s = snapshot.settings;
+  const pinned = Boolean(s.cardPinned);
   const groups = groupTasks(snapshot.tasks);
   const ordered = Object.values(groups).flat();
-  const focus = ordered.find((t) => t.id === s.focusId);
+  const inProgress = ordered.filter(task => taskWorkflow(snapshot, task).state !== "idle");
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [hovering, setHovering] = useState(false);
+  const wheelAt = useRef(0);
+  const focus = inProgress.find(task => task.id === currentId) ?? inProgress.find(task => task.id === s.focusId) ?? inProgress[0];
   const activeFocusId = focus?.id ?? null;
+  const activeIndex = Math.max(0, inProgress.findIndex(task => task.id === activeFocusId));
+  const activeIds = inProgress.map(task => task.id).join("|");
+  const waiting = !!focus && taskWorkflow(snapshot, focus).state === "waiting";
+  const moveCurrent = (direction: number) => {
+    if (inProgress.length > 1) setCurrentId(inProgress[(activeIndex + direction + inProgress.length) % inProgress.length].id);
+  };
   const overdue = groups.overdue[0];
   const overdueDays = overdue?.dueDate ? daysOverdue(overdue.dueDate) : 0;
   const overdueText = overdue ? `逾期提醒：${overdue.title} · ${overdueDays ? `已逾期${overdueDays}天` : "已过截止时间"}` : "";
@@ -83,7 +94,7 @@ export function Pet({
     }
   }
   async function startTask(task: Task) {
-    if (focus || updating.current) return;
+    if (updating.current) return;
     updating.current = true;
     setStarting(true);
     setCompletionError(null);
@@ -110,6 +121,11 @@ export function Pet({
       setPausing(false);
     }
   }
+  useEffect(() => {
+    if (!pinned || s.reduceMotion || hovering || saving || starting || pausing || inProgress.length < 2) return;
+    const timer = setTimeout(() => moveCurrent(1), 10000);
+    return () => clearTimeout(timer);
+  }, [activeFocusId, activeIds, pinned, s.reduceMotion, hovering, saving, starting, pausing]);
   const view = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!view.current || typeof ResizeObserver === "undefined") return;
@@ -142,12 +158,14 @@ export function Pet({
     settle: "rest",
     tap: "interaction",
   };
+  const workingCount = inProgress.filter(task => taskWorkflow(snapshot, task).state === "working").length;
+  const waitingCount = inProgress.filter(task => taskWorkflow(snapshot, task).state === "waiting").length;
   const paused = snapshot.tasks.some(task => task.status === "todo" && task.activityLog?.at(-1)?.action === "paused");
   const state: VisualState = quiet ? "rest" : animation ??
-    (motion.activity === "tap" ? "interaction" : focus ? "working" : paused ? "rest" : motion.activity ? pose[motion.activity] : "idle");
+    (motion.activity === "tap" ? "interaction" : workingCount > 0 ? "working" : paused ? "rest" : motion.activity ? pose[motion.activity] : "idle");
   return (
     <div
-      className="pet-view"
+      className={`pet-view${pinned ? "" : " pet-compact"}`}
       ref={view}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -155,19 +173,23 @@ export function Pet({
       }}
     >
       <div className="pet-card">
-      {!panelVisible && focus && (
-        <div className="pet-current" role="group" aria-label="当前任务卡片">
+      {pinned && focus && (
+        <div className="pet-current" role="group" aria-label="当前任务卡片" onMouseEnter={()=>setHovering(true)} onMouseLeave={()=>setHovering(false)} onWheel={event=>{
+          const delta=event.deltaY || event.deltaX;
+          if (!saving && !starting && !pausing && delta && Date.now()-wheelAt.current>300) { wheelAt.current=Date.now();moveCurrent(delta>0?1:-1); }
+        }}>
           <div className="pet-current-main">
             <button
               className="pet-current-open"
-              aria-label={`正在做：${focus.title}`}
-              title={`正在做：${focus.title}`}
+              aria-label={`${waiting ? "等待进展" : "正在做"}：${focus.title}`}
+              title={`${waiting ? "等待进展" : "正在做"}：${focus.title}`}
               onClick={() => void api.toggle()}
             >
-              <span className="pet-current-label task-state-label"><Play size={12} weight="fill" />正在做</span>
+              <span className={`pet-current-label task-state-label${waiting ? " waiting-progress" : ""}`}>{waiting ? <Hourglass size={12}/> : <Play size={12} weight="fill" />}{waiting ? "等待进展" : "正在做"}</span>
               <span className="pet-current-title" aria-live="polite">{focus.title}</span>
             </button>
             <div className="pet-current-actions">
+            {waiting && <button className="pet-current-complete pet-resume" aria-label={`继续做当前任务：${focus.title}`} disabled={saving || starting || pausing} onClick={()=>void startTask(focus)}><Play size={13} weight="fill"/>继续做</button>}
             <button className="pet-current-complete" aria-label={`暂停当前任务：${focus.title}`} title="暂停并保留用时" disabled={saving || starting || pausing} onClick={() => void pauseTask(focus)}>
               {!pausing && <Pause size={13} weight="fill" />}{pausing ? "暂停中" : "暂停"}
             </button>
@@ -181,6 +203,11 @@ export function Pet({
               {!saving && <Check size={13} weight="bold" />}
               {saving ? "保存中" : "完成"}
             </button>
+            {inProgress.length > 1 && <nav className="bubble-pager current-pager" aria-label="进行中任务切换">
+              <button aria-label="上一项进行中任务" disabled={saving || starting || pausing} onClick={()=>moveCurrent(-1)}><CaretLeft size={14}/></button>
+              <span aria-live="polite">{activeIndex + 1} / {inProgress.length}</span>
+              <button aria-label="下一项进行中任务" disabled={saving || starting || pausing} onClick={()=>moveCurrent(1)}><CaretRight size={14}/></button>
+            </nav>}
             </div>
           </div>
           {overdue && <div className="pet-current-overdue">
@@ -189,19 +216,19 @@ export function Pet({
               <span className="pet-overdue-title" aria-live="polite">{overdue.title}</span>
               <small>{overdueDays ? `已逾期${overdueDays}天` : "已过截止时间"}</small>
             </button>
-            {overdue.id !== focus.id && <button className="pet-current-complete pet-start" aria-label={`开始做：${overdue.title}`} title="请先暂停或完成正在做的任务" disabled={Boolean(focus) || saving || starting || pausing} onClick={() => void startTask(overdue)}>
+            {overdue.id !== focus.id && <button className="pet-current-complete pet-start" aria-label={`开始做：${overdue.title}`} title="开始处理这项任务，其他进行中的任务保持不变" disabled={saving || starting || pausing} onClick={() => void startTask(overdue)}>
               {!starting && <Play size={13} weight="fill" />}{starting ? "开始中" : "开始做"}
             </button>}
           </div>}
           {completionError && (completionError.id === focus.id || completionError.id === overdue?.id) && <span className="pet-completion-error" role="alert" title={completionError.text}>{completionError.action === "start" ? "开始失败，请重试" : completionError.action === "pause" ? "暂停失败，请重试" : "完成失败，请重试"}</span>}
         </div>
       )}
-      {!panelVisible && !focus && (s.showHint || motion.caption) && (
+      {pinned && !focus && (
         <TaskBubble tasks={ordered} focusId={activeFocusId} caption={motion.caption ?? (animation === "celebrate" ? "给自己一点掌声，继续加油。" : null)} onOpen={() => void api.toggle()} onComplete={completeTask} onStart={startTask} saving={saving} starting={starting} completionError={completionError} />
       )}
       </div>
       <button
-        aria-label="点击互动，双击打开任务面板，拖动可移动精灵"
+        aria-label="点击打开任务面板，拖动可移动精灵"
         className="pet-drag"
         onPointerDown={(e) => {
           if (e.button !== 0) return;
@@ -226,9 +253,11 @@ export function Pet({
           e.currentTarget.releasePointerCapture(e.pointerId);
         }}
         onClick={(e) => {
-          if (e.detail === 0 || !drag.current?.moved) motion.interact();
+          if ((e.detail === 0 || !drag.current?.moved) && e.detail < 2) {
+            motion.interact();
+            void api.toggle();
+          }
         }}
-        onDoubleClick={() => void api.toggle()}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -244,10 +273,9 @@ export function Pet({
           still={s.reduceMotion || quiet}
         />
       </button>
-      <span className="pet-count" role="status" aria-label={`任务底座：待办${ordered.length}项，逾期${groups.overdue.length}项`}>
-        <span>待办 <strong>{ordered.length}</strong></span>
-        <i />
-        <span>逾期 <b>{groups.overdue.length}</b></span>
+      <span className="pet-count" role="status" aria-label={`任务状态：待办${ordered.length}项，延期${groups.overdue.length}项，正在做${workingCount + waitingCount}项`}>
+        <span>待办 <strong>{ordered.length}</strong></span><span>延期 <b>{groups.overdue.length}</b></span>
+        <span>正在做 <strong>{workingCount + waitingCount}</strong></span>
       </span>
       {dragError && <span className="drag-error">可从菜单栏找回窗口</span>}
     </div>

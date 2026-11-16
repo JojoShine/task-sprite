@@ -25,8 +25,8 @@ export function Wardrobe({ settings, looksExpiresAt, onActivate, onChange, onClo
   const items = category === "pets" ? plannedLooks : interfaceSkins;
   const pageCount = Math.ceil(items.length / 4);
   return <section className="wardrobe" aria-label="精灵衣橱">
-    <div className="section-heading"><h2>精灵衣橱</h2><button className="text-button icon-text" aria-label="返回任务" onClick={onClose}><ArrowLeft size={16} />返回</button></div>
-    <p className="wardrobe-intro">六位专属精灵与四款整体皮肤独立选择，可自由搭配。免费伙伴在任务页切换。</p>
+    <div className="section-heading"><h2>精灵衣橱</h2><button className="text-button icon-text" aria-label="返回设置" onClick={onClose}><ArrowLeft size={16} />返回</button></div>
+    <p className="wardrobe-intro">六位专属精灵与四款整体皮肤独立选择，可自由搭配。免费伙伴在设置中切换。</p>
     <div className="wardrobe-tabs" role="group" aria-label="装扮分类">
       <button aria-pressed={category === "pets"} onClick={() => { setCategory("pets"); setPage(0); setError(""); }}>专属精灵 {plannedLooks.length}</button>
       <button aria-pressed={category === "skins"} onClick={() => { setCategory("skins"); setPage(0); setError(""); }}>界面皮肤 {interfaceSkins.length}</button>

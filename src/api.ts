@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import type { Snapshot, TaskInput, Settings, VisualState, SyncStatus } from "./types";
 export const api = {
+  checkUpdate: () => invoke<{ currentVersion: string; version: string | null; notes: string | null }>("check_update"),
+  installUpdate: (version: string) => invoke<void>("install_update", { version }),
   preview: (state: VisualState) => emit("preview-animation", state),
   petPosition: () =>
     invoke<[number, number]>("get_pet_position").then(([x, y]) => ({ x, y })),
@@ -33,14 +35,20 @@ export const api = {
         | "quietEnd"
         | "reduceMotion"
         | "showHint"
+        | "panelPinned"
+        | "cardPinned"
         | "theme"
       >
     >,
   ) => invoke<Snapshot>("update_preferences", { patch }),
+  execution: (id: string, state: "idle" | "working" | "waiting") => invoke<Snapshot>("set_task_execution", { id, state }),
+  deleteStep: (id: string, stepId: string) => invoke<Snapshot>("delete_task_step", { id, stepId }),
+  appendStep: (id: string, content: string) => invoke<Snapshot>("append_task_step", { id, content }),
   focus: (id: string | null) => invoke<Snapshot>("set_focus", { id }),
   pause: (id: string) => invoke<Snapshot>("pause_task", { id }),
   snooze: (id: string, minutes: 30 | 120) =>
     invoke<void>("snooze", { id, minutes }),
+  panelInteraction: () => invoke<void>("panel_interaction"),
   panelVisible: () => invoke<boolean>("is_panel_visible"),
   toggle: () => invoke<void>("toggle_panel"),
   hide: () => invoke<void>("hide_panel"),

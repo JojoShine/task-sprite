@@ -1,0 +1,60 @@
+/* Leave the task list to the work; preferences live in Settings. */
+.topbar { height:56px; margin:0 14px; padding-inline:0; }
+.window-actions { gap:4px; align-items:center; }
+.window-actions .reminder-settings-button { width:auto; padding:5px 7px; display:flex; align-items:center; gap:4px; font-size:12px; color:var(--green); background:var(--surface); }
+.panel-content { padding-inline:14px; padding-bottom:10px; }
+.paged-view .list-tabs { margin-top:12px; gap:15px; margin-bottom:10px; padding-bottom:8px; }
+.paged-view .date-line,.paged-view .local-badge { font-size:12px; }
+.task-page { gap:6px; }
+.task-page .task-row { flex:0 0 auto; height:auto; min-height:72px; padding:5px 9px; }
+.task-page .task-title { font-size:15px; }
+.task-title-line { gap:6px; }
+.priority-badge { display:inline-flex; align-items:center; gap:3px; flex:none; padding:0; font-size:12px; font-weight:500; line-height:16px; }
+.priority-badge.priority-high { color:var(--red); }
+.priority-badge.priority-med { color:var(--green); }
+.priority-badge.priority-low { color:var(--muted); }
+.task-page .task-row.is-upcoming { border-left-color:#d38a32; }
+.task-page .task-row.is-upcoming .upcoming { color:#b66a1b; }
+.task-page .task-bottom { display:flex; flex-direction:column; align-items:flex-start; gap:3px; margin-top:2px; }
+.task-page .task-meta { display:flex; align-items:center; gap:8px; font-size:12px; line-height:16px; max-width:100%; }
+.task-page .task-actions { gap:12px; margin:0; flex-wrap:wrap; }
+.task-page .task-actions button { font-size:12px; line-height:16px; }
+.execution-badge { color:var(--green); font-weight:600; }
+.execution-badge.waiting { color:#a66a20; }
+.task-list-area .task-pager { margin-top:0; padding-top:8px; }
+.notification-note { position:static; flex-shrink:0; margin:5px 0 0; padding:5px 0; font-size:11px; max-height:44px; overflow:hidden; }
+.panel-bottom-bar { flex-direction:row; justify-content:space-between; margin:0 14px 9px; padding-top:7px; gap:8px; }
+.panel-bottom-bar>button { color:var(--red); border:1px solid currentColor; padding:4px 9px; font-size:12px; min-height:30px; }
+.reminder-settings,.window-settings,.companion-settings { padding:12px; border:1px solid var(--line); background:var(--surface); }
+.reminder-settings { border-left:3px solid var(--gold); scroll-margin-top:10px; }
+.reminder-settings h3,.window-settings h3,.companion-settings h3 { margin:0; font-size:15px; }
+.reminder-settings .toggle,.window-settings .toggle { margin-block:12px; }
+.companion-settings .pet-options { margin:8px 0; }
+.companion-settings .pet-option .sprite { width:42px; height:48px; }
+.companion-settings .pet-option { padding:5px; }
+.companion-settings .pet-option>span:last-child { font-size:11px; }
+@container (max-height:360px) {
+ .task-page .task-row { min-height:72px; padding:5px 8px; }
+ .task-page .task-title { font-size:14px; }
+}
+
+/* Long tasks keep their full text; only the list scrolls. */
+.task-list-area .task-page { flex:0 1 auto; overflow-y:auto; overflow-x:hidden; margin:0; padding:0; scrollbar-gutter:auto; }
+.task-page .task-row { flex-shrink:0; align-items:flex-start; }
+.task-page .task-title-line { align-items:flex-start; }
+.task-page .task-title { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }
+.task-page .check { margin-top:6px; flex-shrink:0; }
+.task-description { margin:5px 0; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.65; font-size:13px; color:var(--muted); }
+.window-actions>button { width:auto; display:flex; align-items:center; gap:5px; padding:5px 8px; font-size:12px; }
+.task-page .task-actions .chain-entry { background:var(--surface); border:1px solid var(--line); padding:0 6px; font-weight:600; }
+
+.editor-scroll,.task-list-area .task-page,.bottom-sheet,.settings { scrollbar-width:thin; scrollbar-color:color-mix(in srgb,var(--muted) 30%,transparent) transparent; }
+.editor-scroll::-webkit-scrollbar,.task-page::-webkit-scrollbar,.bottom-sheet::-webkit-scrollbar { width:4px; height:4px; }
+.editor-scroll::-webkit-scrollbar-track,.task-page::-webkit-scrollbar-track,.bottom-sheet::-webkit-scrollbar-track { background:transparent; }
+.editor-scroll::-webkit-scrollbar-thumb,.task-page::-webkit-scrollbar-thumb,.bottom-sheet::-webkit-scrollbar-thumb { background:color-mix(in srgb,var(--muted) 28%,transparent); border-radius:4px; }
+
+.window-actions>.settings-button { width:32px; min-width:32px; height:32px; padding:5px; justify-content:center; }
+.settings-button>svg { display:block; flex-shrink:0; }
+.window-actions>.pin-button { display:flex; align-items:center; justify-content:center; width:32px; min-width:32px; height:32px; padding:5px; }
+.window-actions>.pin-button[aria-pressed="true"] { color:var(--green); background:var(--surface-hover); }
+.pin-error { margin:4px 14px; font-size:12px; color:var(--red); }

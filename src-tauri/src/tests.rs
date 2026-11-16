@@ -88,9 +88,9 @@ fn daily_summary_deduplicates_across_reopen() {
         s.record_delivery(&n).unwrap();
         assert!(plan(&s, now("2026-11-13 09:06")).unwrap().is_none());
     }
+    // Daily summary stays deduplicated while overdue tasks may repeat.
     assert!(plan(&Store::open(&p).unwrap(), now("2026-11-13 10:00"))
-        .unwrap()
-        .is_none());
+        .unwrap().unwrap().summary_day.is_none());
 }
 #[test]
 fn quiet_hours_defer_snooze_until_allowed() {
@@ -124,7 +124,7 @@ fn invalid_settings_or_snooze_leave_data_intact() {
     let mut st = s.snapshot().unwrap().settings;
     st.pet = "dragon".into();
     assert!(s.set_settings(st).is_err());
-    assert_eq!(s.snapshot().unwrap().settings.pet, "shiba");
+    assert_eq!(s.snapshot().unwrap().settings.pet, "robot");
     assert!(s.snooze("unknown", 30, now("2026-11-13 10:00")).is_err());
 }
 #[test]
@@ -221,7 +221,10 @@ fn half_day_deadline_is_saved_validated_and_reminded_once() {
     assert_eq!(serde_json::to_value(&task).unwrap()["dueTime"], "17:00");
     let summary = plan(&s, now("2026-11-13 09:00")).unwrap().unwrap();
     s.record_delivery(&summary).unwrap();
-    assert!(plan(&s, now("2026-11-13 16:59")).unwrap().is_none());
+    assert!(deliver(&mut s, now("2026-11-13 15:00"), |_| Ok(())).unwrap());
+    assert!(plan(&s, now("2026-11-13 15:29")).unwrap().is_none());
+    assert!(deliver(&mut s, now("2026-11-13 15:30"), |_| Ok(())).unwrap());
+    assert!(plan(&s, now("2026-11-13 16:59")).unwrap().is_some());
     assert!(deliver(&mut s, now("2026-11-13 17:00"), |_| Err("failed".into())).is_err());
     assert!(deliver(&mut s, now("2026-11-13 17:01"), |_| Ok(())).unwrap());
     assert!(plan(&s, now("2026-11-13 17:02")).unwrap().is_none());
@@ -418,7 +421,7 @@ fn pet_panel_prefers_above_when_it_fits_and_otherwise_uses_a_free_side() {
     assert!(panel.y + panel.h <= pet.y + 90.);
     let lower = Rect { x: 0., y: 24., w: 1280., h: 648. };
     let panel = panel_position(Rect { y: 440., ..pet }, lower);
-    assert_eq!((panel.w, panel.h), (440., 620.));
+    assert_eq!((panel.w, panel.h), (440., 648.));
     assert!(panel.x + panel.w + 12. <= pet.x + 60.);
     assert!(panel.y >= lower.y && panel.y + panel.h <= lower.y + lower.h);
 }
@@ -555,7 +558,7 @@ fn deleting_completed_tasks_leaves_other_tasks_and_their_reminders_unchanged() {
 fn mac_panel_is_anchored_below_the_status_item_and_clamped_to_its_screen() {
     let visible = Rect { x: 0., y: 48., w: 1440., h: 830. };
     let middle = cocoa_menu_position(900., Rect { x: 1000., y: 878., w: 24., h: 22. }, visible);
-    assert_eq!((middle.x, middle.y, middle.w, middle.h), (792., 24., 440., 620.));
+    assert_eq!((middle.x, middle.y, middle.w, middle.h), (792., 24., 440., 740.));
     let right = cocoa_menu_position(900., Rect { x: 1416., y: 878., w: 24., h: 22. }, visible);
     assert_eq!((right.x, right.y), (1000., 24.));
     let left = cocoa_menu_position(900., Rect { x: 0., y: 878., w: 24., h: 22. }, visible);
@@ -617,28 +620,21 @@ fn all_task_history_and_current_work_survive_reopen_and_remain_exportable() {
 
 
 #[test]
-fn focus_switch_requires_explicit_pause_or_completion_even_after_reopen() {
+fn focus_switch_preserves_parallel_work_after_reopen() {
     let dir=tempfile::tempdir().unwrap();let path=dir.path().join("tasks.sqlite3");
     let (first,second)={
         let mut store=Store::open(&path).unwrap();
-        let first=store.save_task(input("唯一正在做的任务",None)).unwrap();
-        let second=store.save_task(input("等待开始的任务",None)).unwrap();
+        let first=store.save_task(input("并行任务一",None)).unwrap();
+        let second=store.save_task(input("并行任务二",None)).unwrap();
         store.set_focus(Some(first.id.clone())).unwrap();
-        assert!(store.set_focus(Some(second.id.clone())).is_err());
-        assert!(store.set_focus(None).is_err());
-        assert!(store.set_focus(Some(first.id.clone())).is_ok());
-        let mut prefs=store.snapshot().unwrap().settings;
-        prefs.theme="dark".into();store.set_settings(prefs).unwrap();
+        store.set_focus(Some(second.id.clone())).unwrap();
+        assert_eq!(store.snapshot().unwrap().workflows[&first.id].state,"working");
         (first,second)
     };
     let mut store=Store::open(&path).unwrap();
-    assert!(store.set_focus(Some(second.id.clone())).is_err());
-    let mut stale=store.snapshot().unwrap().settings;stale.focus_id=Some(second.id.clone());
-    assert!(store.set_settings(stale).is_err());
-    assert_eq!(store.snapshot().unwrap().settings.focus_id,Some(first.id.clone()));
-    let mut done=input(&first.title,None);done.id=Some(first.id);done.status="completed".into();
-    store.save_task(done).unwrap();
-    assert!(store.set_focus(Some(second.id.clone())).is_ok());
+    assert_eq!(store.snapshot().unwrap().settings.focus_id,Some(second.id.clone()));
+    store.pause_task(&first.id).unwrap();
+    assert_eq!(store.snapshot().unwrap().workflows[&second.id].state,"working");
     assert_eq!(store.snapshot().unwrap().settings.focus_id,Some(second.id));
 }
 
@@ -745,7 +741,7 @@ fn synced_deletion_preserves_local_preferences_and_conflicts_require_a_choice() 
     store.sync_resolve(&task.id, false).unwrap();
     let snapshot = store.snapshot().unwrap();
     assert!(snapshot.tasks.is_empty());assert!(snapshot.settings.focus_id.is_none());
-    assert_eq!(snapshot.settings.pet, "shiba");
+    assert_eq!(snapshot.settings.pet, "robot");
     assert!(store.sync_link("different-account").is_err());
 }
 #[test]
@@ -892,7 +888,7 @@ fn activity_pause_releases_focus_resumes_and_survives_reopen() {
     assert!(store.snapshot().unwrap().settings.focus_id.is_none());
     assert!(store.pause_task(&first.id).is_err());
     store.set_focus(Some(second.id.clone())).unwrap();
-    assert!(store.set_focus(Some(first.id.clone())).is_err());
+    assert_eq!(store.snapshot().unwrap().workflows[&second.id].state,"working");
     store.pause_task(&second.id).unwrap();
     drop(store);
     let mut store=Store::open(&path).unwrap();
@@ -1040,7 +1036,7 @@ fn oversized_task_history_returns_an_explicit_sync_error_and_keeps_all_events() 
 
 
 #[test]
-fn accepting_remote_paused_state_closes_retained_local_active_history() {
+fn accepting_remote_paused_state_preserves_parallel_local_active_history() {
     use crate::sync_store::*;
     let mut store=Store::memory().unwrap();store.sync_link("a").unwrap();store.sync_enable().unwrap();
     let task=store.save_task(input("local interval",None)).unwrap();store.set_focus(Some(task.id.clone())).unwrap();
@@ -1064,7 +1060,8 @@ fn accepting_remote_paused_state_closes_retained_local_active_history() {
     store.sync_resolve(&task.id,false).unwrap();
     let snapshot=store.snapshot().unwrap();let saved=&snapshot.tasks[0];
     assert!(saved.activity_log.iter().any(|e|e.id==local.id));
-    assert_eq!(saved.activity_log.last().unwrap().action,"paused");
+    assert_eq!(saved.activity_log.last().unwrap().action,"resumed");
+    assert_eq!(snapshot.workflows[&task.id].state,"working");
     assert!(snapshot.settings.focus_id.is_none());
 }
 

@@ -40,11 +40,17 @@ export interface Settings {
   quietEnd: string;
   reduceMotion: boolean;
   showHint: boolean;
+  panelPinned?: boolean;
+  cardPinned?: boolean;
   theme: Theme;
   petX: number | null;
   petY: number | null;
 }
+export type ExecutionState = "idle" | "working" | "waiting";
+export interface TaskStep { id: string; content: string; createdAt: string; }
+export interface TaskWorkflow { state: ExecutionState; steps: TaskStep[]; }
 export interface Snapshot {
+  workflows?: Record<string, TaskWorkflow>;
   looksExpiresAt?: string | null;
   tasks: Task[];
   settings: Settings;
