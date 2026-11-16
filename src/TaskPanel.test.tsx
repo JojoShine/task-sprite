@@ -11,7 +11,7 @@ import { TaskPanel } from "./TaskPanel";
 import { api } from "./api";
 import type { Snapshot } from "./types";
 vi.mock("./api", () => ({
-  api: { preferences: vi.fn(), save: vi.fn(), preview: vi.fn(), execution: vi.fn(), appendStep: vi.fn(), panelInteraction: vi.fn(async () => {}), resizePanel:vi.fn(async()=>740), deleteTask: vi.fn(), pause: vi.fn(), focus: vi.fn(), exportTasks: vi.fn(), quit: vi.fn(), openWebsite: vi.fn(), syncStatus: vi.fn(async () => ({bound:false, accountId:null, enabled:false, pending:0, conflicts:[], license:null})) },
+  api: { checkUpdate:vi.fn(async()=>({currentVersion:"0.2.2",version:null,notes:null})), preferences: vi.fn(), save: vi.fn(), preview: vi.fn(), execution: vi.fn(), appendStep: vi.fn(), panelInteraction: vi.fn(async () => {}), resizePanel:vi.fn(async()=>740), deleteTask: vi.fn(), pause: vi.fn(), focus: vi.fn(), exportTasks: vi.fn(), quit: vi.fn(), openWebsite: vi.fn(), syncStatus: vi.fn(async () => ({bound:false, accountId:null, enabled:false, pending:0, conflicts:[], license:null})) },
   message: (e: unknown) => String(e),
 }));
 const snapshot: Snapshot = {
@@ -398,9 +398,10 @@ it("keeps six-task capacity after the native window shrinks on the last page",as
   await waitFor(()=>expect(api.resizePanel).toHaveBeenLastCalledWith(680));
   expect(screen.getAllByRole("button",{name:/^完成 /})).toHaveLength(6);
 });
-it("keeps the update icon immediately to the left of the pin on tasks and settings",()=>{
+it("keeps an available update icon immediately to the left of the pin on tasks and settings",async()=>{
+  vi.mocked(api.checkUpdate).mockResolvedValueOnce({currentVersion:"0.2.2",version:"0.2.3",notes:null});
   render(<TaskPanel snapshot={snapshot} onSnapshot={()=>{}}/>);
-  const entry=screen.getByRole("button",{name:"应用更新"}).parentElement!;
+  const entry=(await screen.findByRole("button",{name:"应用更新"})).parentElement!;
   expect(entry.closest('.window-actions')).not.toBeNull();
   expect(entry.nextElementSibling).toBe(screen.getByRole("button",{name:"固定任务窗口"}));
   fireEvent.click(screen.getByRole("button",{name:"设置"}));
