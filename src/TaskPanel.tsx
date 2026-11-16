@@ -23,6 +23,7 @@ import { renderedPet } from "./looks";
 import { Sprite } from "./Pet";
 import { TaskEditor } from "./TaskEditor";
 import { Settings } from "./Settings";
+import { UpdateSettings } from "./UpdateSettings";
 import { Wardrobe } from "./Wardrobe";
 import { taskWorkflow } from "./workflow";
 import { isTaskPaused } from "./taskTiming";
@@ -405,7 +406,7 @@ export function TaskPanel({
         </div>
         <footer className="panel-bottom-bar">
           {quitError && <span role="alert" title={quitError}>{quitError}</span>}
-          <a className="powered-by" href="https://tbtparent.me" onClick={event => { event.preventDefault(); void api.openWebsite().catch(e => setQuitError(message(e))); }}>Powered by TBTParent</a>
+          <div className="footer-left"><UpdateSettings /><a className="powered-by" href="https://tbtparent.me" onClick={event => { event.preventDefault(); void api.openWebsite().catch(e => setQuitError(message(e))); }}>Powered by TBTParent</a></div>
           <button className="text-button icon-text" aria-label="退出 Task Sprite" disabled={quitting} onClick={() => void quit()}><SignOut size={15}/>{quitting ? "正在退出…" : "退出 Task Sprite"}</button>
         </footer>
       </div>

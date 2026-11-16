@@ -4,7 +4,6 @@ import type { Settings as Preferences, Snapshot } from "./types";
 import { api, message } from "./api";
 import { CompanionSettings } from "./CompanionSettings";
 import { SyncSettings } from "./SyncSettings";
-import { UpdateSettings } from "./UpdateSettings";
 export function Settings({
   settings,
   onClose,
@@ -78,7 +77,7 @@ export function Settings({
         />
       </label>
       <label>
-        每日汇总时间
+        每日集中提醒时间
         <input
           disabled={busy}
           type="time"
@@ -87,6 +86,7 @@ export function Settings({
           onBlur={() => { if (!draft.summaryTime) setDraft(current => ({...current, summaryTime:settings.summaryTime})); }}
         />
       </label>
+      <p className="micro">每天集中提醒今天到期和已延期的任务一次。09:00 是默认时间，可以修改。</p>
       <div className="field-row">
         <label>
           免打扰开始
@@ -160,7 +160,6 @@ export function Settings({
         </div>
       </fieldset>
       <SyncSettings onChange={onChange} />
-      <UpdateSettings />
       <section className="identity-card export-card" aria-label="导出任务">
         <div className="identity-heading"><DownloadSimple size={20} /><strong>导出任务</strong></div>
         <p>导出全部待办与已完成任务，保留所有任务属性。</p>
