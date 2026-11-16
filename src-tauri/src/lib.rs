@@ -297,8 +297,10 @@ fn pet_rect(app: &tauri::AppHandle) -> Result<windows::Rect> {
 }
 #[cfg(target_os = "macos")]
 fn menu_panel_position(app: &tauri::AppHandle) -> Result<windows::Rect> {
+    let panel = app.get_webview_window("panel").ok_or("窗口不存在")?;
+    let height = panel.outer_size().map_err(|e| e.to_string())?.height as f64 / panel.scale_factor().map_err(|e| e.to_string())?;
     let tray = app.tray_by_id("main").ok_or("菜单栏图标不可用")?;
-    tray.with_inner_tray_icon(|tray| -> Result<windows::Rect> {
+    tray.with_inner_tray_icon(move |tray| -> Result<windows::Rect> {
         use objc2::MainThreadMarker;
         use objc2_app_kit::NSScreen;
         let mtm = MainThreadMarker::new().ok_or("窗口操作需在主线程执行")?;
@@ -314,6 +316,7 @@ fn menu_panel_position(app: &tauri::AppHandle) -> Result<windows::Rect> {
             primary.frame().size.height,
             windows::Rect { x: anchor.origin.x, y: anchor.origin.y, w: anchor.size.width, h: anchor.size.height },
             windows::Rect { x: visible.origin.x, y: visible.origin.y, w: visible.size.width, h: visible.size.height },
+            height,
         ))
     }).map_err(|e| e.to_string())?
 }
@@ -324,7 +327,9 @@ fn place_panel(app: &tauri::AppHandle) -> Result<()> {
     let r = {
         let pet = pet_rect(app)?;
         let area = monitor_rect(app, pet)?;
-        let (placed_pet, panel) = windows::panel_layout(pet, area);
+        let panel = app.get_webview_window("panel").ok_or("窗口不存在")?;
+        let height = panel.outer_size().map_err(|e| e.to_string())?.height as f64 / panel.scale_factor().map_err(|e| e.to_string())?;
+        let (placed_pet, panel) = windows::panel_layout(pet, area, height);
         if placed_pet.x != pet.x || placed_pet.y != pet.y {
             app.get_webview_window("pet").ok_or("窗口不存在")?
                 .set_position(LogicalPosition::new(placed_pet.x, placed_pet.y)).map_err(|e| e.to_string())?;
@@ -338,6 +343,22 @@ fn place_panel(app: &tauri::AppHandle) -> Result<()> {
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+#[tauri::command]
+fn resize_panel(app: tauri::AppHandle, height: Option<f64>) -> Result<f64> {
+    let window = app.get_webview_window("panel").ok_or("窗口不存在")?;
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let position = window.outer_position().map_err(|e| e.to_string())?;
+    let size = window.outer_size().map_err(|e| e.to_string())?;
+    let rect = windows::Rect { x:position.x as f64 / scale, y:position.y as f64 / scale, w:size.width as f64 / scale, h:size.height as f64 / scale };
+    let area = monitor_rect(&app, rect)?;
+    if let Some(height) = height {
+        if !height.is_finite() || height <= 0. { return Err("窗口高度无效".into()); }
+        let next = windows::fitted_panel(rect, height, area, cfg!(not(target_os = "macos")));
+        window.set_size(LogicalSize::new(next.w,next.h)).map_err(|e| e.to_string())?;
+        window.set_position(LogicalPosition::new(next.x,next.y)).map_err(|e| e.to_string())?;
+    }
+    Ok(740_f64.min(area.h))
 }
 fn show_panel(app: &tauri::AppHandle) -> Result<()> {
     panel_interaction(app.clone());
@@ -388,7 +409,7 @@ fn show_panel_from_tray(
                     x: at.x + size.width / 2. - 220.,
                     y: at.y + size.height + 8.,
                     w: 440.,
-                    h: 740.,
+                    h: panel.outer_size().map_err(|e| e.to_string())?.height as f64 / panel.scale_factor().map_err(|e| e.to_string())?,
                 },
                 windows::Rect {
                     x: area.position.x as f64 / scale,
@@ -649,6 +670,7 @@ pub fn run() {
             get_pet_position,
             move_pet,
             resize_pet,
+            resize_panel,
             request_notifications,
             test_notification,
             notification_status,

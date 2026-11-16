@@ -15,17 +15,21 @@ pub fn clamp(r: Rect, a: Rect) -> Rect {
         h,
     }
 }
+pub fn fitted_panel(p: Rect, height: f64, area: Rect, anchor_bottom: bool) -> Rect {
+    let h = height.max(260.).min(740.).min(area.h);
+    clamp(Rect { y: if anchor_bottom { p.y + p.h - h } else { p.y }, h, ..p }, area)
+}
 #[cfg(any(not(target_os = "macos"), test))]
 fn pet_footprint(p: Rect) -> Rect {
     // The sprite and pedestal stay anchored to the bottom as the task card grows.
     Rect { x: p.x + 60., y: p.y + p.h - 169., w: 180., h: 167. }
 }
 #[cfg(any(not(target_os = "macos"), test))]
-pub fn panel_position(p: Rect, a: Rect) -> Rect {
+pub fn panel_position(p: Rect, a: Rect, height: f64) -> Rect {
     let body = pet_footprint(p);
     let gap = 12.;
     let w = 440_f64.min(a.w);
-    let h = 740_f64.min(a.h);
+    let h = height.max(260.).min(740.).min(a.h);
     let x = p.x + p.w / 2. - w / 2.;
     let above_h = (body.y - gap - a.y).min(h);
     let below_y = body.y + body.h + gap;
@@ -38,7 +42,7 @@ pub fn panel_position(p: Rect, a: Rect) -> Rect {
     let below = Rect { x, y: below_y, w, h: (a.y + a.h - below_y).min(h) };
     let sides = if body.x - a.x >= a.x + a.w - body.x - body.w { [left, right] } else { [right, left] };
     for candidate in [above, sides[0], sides[1], below] {
-        if candidate.w >= 420. && candidate.h >= 500. {
+        if candidate.w >= 420. && candidate.h >= 500_f64.min(h) {
             return clamp(candidate, a);
         }
     }
@@ -46,8 +50,8 @@ pub fn panel_position(p: Rect, a: Rect) -> Rect {
     clamp(Rect { x: if left_w >= right_w { a.x } else { a.x + a.w - w }, y: body.y + body.h - h, w, h }, a)
 }
 #[cfg(any(not(target_os = "macos"), test))]
-pub fn panel_layout(p: Rect, a: Rect) -> (Rect, Rect) {
-    let panel = panel_position(p, a);
+pub fn panel_layout(p: Rect, a: Rect, height: f64) -> (Rect, Rect) {
+    let panel = panel_position(p, a, height);
     let body = pet_footprint(p);
     if panel_clear_of_pet(panel, p) { return (p, panel); }
     let x = if panel.x + panel.w / 2. <= body.x + body.w / 2. {
@@ -56,7 +60,7 @@ pub fn panel_layout(p: Rect, a: Rect) -> (Rect, Rect) {
         panel.x - 12. - 240.
     };
     let pet = clamp(Rect { x, ..p }, a);
-    (pet, panel_position(pet, a))
+    (pet, panel_position(pet, a, height))
 }
 
 #[cfg(any(not(target_os = "macos"), test))]
@@ -69,7 +73,7 @@ pub fn panel_clear_of_pet(panel: Rect, pet: Rect) -> bool {
 }
 
 #[cfg(any(target_os = "macos", test))]
-pub fn cocoa_menu_position(primary_height: f64, status: Rect, visible: Rect) -> Rect {
+pub fn cocoa_menu_position(primary_height: f64, status: Rect, visible: Rect, height: f64) -> Rect {
     // AppKit uses global logical points with a bottom-left origin.
     let area = Rect {
         x: visible.x,
@@ -82,7 +86,7 @@ pub fn cocoa_menu_position(primary_height: f64, status: Rect, visible: Rect) -> 
             x: status.x + status.w / 2. - 220.,
             y: area.y.max(primary_height - status.y) + 2.,
             w: 440.,
-            h: 740.,
+            h: height.max(260.).min(740.),
         },
         area,
     )

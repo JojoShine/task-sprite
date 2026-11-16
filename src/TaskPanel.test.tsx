@@ -11,7 +11,7 @@ import { TaskPanel } from "./TaskPanel";
 import { api } from "./api";
 import type { Snapshot } from "./types";
 vi.mock("./api", () => ({
-  api: { preferences: vi.fn(), save: vi.fn(), preview: vi.fn(), execution: vi.fn(), appendStep: vi.fn(), panelInteraction: vi.fn(async () => {}), deleteTask: vi.fn(), pause: vi.fn(), focus: vi.fn(), exportTasks: vi.fn(), quit: vi.fn(), openWebsite: vi.fn(), syncStatus: vi.fn(async () => ({bound:false, accountId:null, enabled:false, pending:0, conflicts:[], license:null})) },
+  api: { preferences: vi.fn(), save: vi.fn(), preview: vi.fn(), execution: vi.fn(), appendStep: vi.fn(), panelInteraction: vi.fn(async () => {}), resizePanel:vi.fn(async()=>740), deleteTask: vi.fn(), pause: vi.fn(), focus: vi.fn(), exportTasks: vi.fn(), quit: vi.fn(), openWebsite: vi.fn(), syncStatus: vi.fn(async () => ({bound:false, accountId:null, enabled:false, pending:0, conflicts:[], license:null})) },
   message: (e: unknown) => String(e),
 }));
 const snapshot: Snapshot = {
@@ -353,4 +353,48 @@ it('toggles a persistent pin beside settings and reflects the saved preference',
  vi.mocked(api.preferences).mockResolvedValue(snapshot);
  fireEvent.click(screen.getByRole('button',{name:'取消窗口固定'}));
  await waitFor(()=>expect(api.preferences).toHaveBeenCalledWith({panelPinned:false}));
+});
+
+function mockContentHeight() {
+  vi.stubGlobal("innerHeight",740);
+  vi.mocked(api.resizePanel).mockClear();
+  vi.mocked(api.resizePanel).mockImplementation(async height => { window.innerHeight=height; return 740; });
+  vi.stubGlobal("ResizeObserver",class { observe(){} disconnect(){} });
+  vi.spyOn(HTMLElement.prototype,"clientHeight","get").mockImplementation(function(this:HTMLElement){ return this.classList.contains("task-list-area") ? window.innerHeight-180 : 0; });
+  vi.spyOn(HTMLElement.prototype,"scrollHeight","get").mockImplementation(function(this:HTMLElement){
+    if(this.classList.contains("task-page")){const count=this.querySelectorAll('.task-row').length;return count*72+Math.max(0,count-1)*6;}
+    return this.classList.contains("empty") ? 200 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype,"offsetHeight","get").mockImplementation(function(this:HTMLElement){return this.classList.contains("task-pager") ? 38 : 0;});
+  const computed=window.getComputedStyle.bind(window);
+  vi.spyOn(window,"getComputedStyle").mockImplementation(element=>new Proxy(computed(element),{get(target,key){
+    if(element.classList.contains("task-row")&&key==="minHeight")return "72px";
+    if(element.classList.contains("task-page")&&key==="rowGap")return "6px";
+    return Reflect.get(target,key);
+  }}));
+}
+const heightTasks = (count:number) => Array.from({length:count},(_,i)=>({id:String(i),title:`高度任务${i}`,description:"",priority:"med" as const,status:"todo" as const,dueDate:null,dueTime:null,createdAt:"2026-11-16",updatedAt:"2026-11-16",completedAt:null}));
+it("shrinks the actual window for empty and short lists, and grows it to fit six tasks",async()=>{
+  mockContentHeight();
+  const {rerender}=render(<TaskPanel snapshot={{...snapshot,tasks:[]}} onSnapshot={()=>{}}/>);
+  await waitFor(()=>expect(api.resizePanel).toHaveBeenLastCalledWith(380));
+  expect(screen.queryByRole("navigation",{name:"任务翻页"})).toBeNull();
+  rerender(<TaskPanel snapshot={{...snapshot,tasks:heightTasks(1)}} onSnapshot={()=>{}}/>);
+  await waitFor(()=>expect(api.resizePanel).toHaveBeenLastCalledWith(260));
+  rerender(<TaskPanel snapshot={{...snapshot,tasks:heightTasks(6)}} onSnapshot={()=>{}}/>);
+  await waitFor(()=>expect(api.resizePanel).toHaveBeenLastCalledWith(642));
+  expect(screen.getAllByRole("button",{name:/^完成 /})).toHaveLength(6);
+  rerender(<TaskPanel snapshot={{...snapshot,tasks:heightTasks(1)}} onSnapshot={()=>{}}/>);
+  await waitFor(()=>expect(api.resizePanel).toHaveBeenLastCalledWith(260));
+});
+it("keeps six-task capacity after the native window shrinks on the last page",async()=>{
+  mockContentHeight();
+  render(<TaskPanel snapshot={{...snapshot,tasks:heightTasks(7)}} onSnapshot={()=>{}}/>);
+  await waitFor(()=>expect(api.resizePanel).toHaveBeenLastCalledWith(680));
+  fireEvent.click(screen.getByRole("button",{name:"下一页任务"}));
+  await waitFor(()=>expect(api.resizePanel).toHaveBeenLastCalledWith(290));
+  expect(screen.getByText("2 / 2")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button",{name:"上一页任务"}));
+  await waitFor(()=>expect(api.resizePanel).toHaveBeenLastCalledWith(680));
+  expect(screen.getAllByRole("button",{name:/^完成 /})).toHaveLength(6);
 });

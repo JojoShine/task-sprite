@@ -45,6 +45,9 @@ export function TaskPanel({
   const completed = filter === "completed";
   const [focusChain, setFocusChain] = useState(false);
   const taskPage = useRef<HTMLDivElement>(null);
+  const shell = useRef<HTMLDivElement>(null);
+  const [heightLimit, setHeightLimit] = useState(window.innerHeight);
+  const requestedHeight = useRef(0);
   const [pageSize, setPageSize] = useState(6);
   const [pageSelection, setPageSelection] = useState({ key: "", index: 0 });
   const [error, setError] = useState("");
@@ -69,28 +72,47 @@ export function TaskPanel({
   }, [panelVisible]);
   const pageKey = completed ? "completed" : `${filter}:${groups.overdue.map(task => task.id).join("|")}`;
   useEffect(() => setPageSelection({ key: pageKey, index: 0 }), [pageKey, pageSize]);
-  useEffect(() => {
-    const area = taskPage.current;
-    if (!area || typeof ResizeObserver === "undefined") return;
-    const measure = () => {
-      const card = area.querySelector<HTMLElement>(".task-row");
-      if (!card) return;
-      const minimum = parseFloat(getComputedStyle(card).minHeight) || 62;
-      const cards = area.querySelector<HTMLElement>(".task-page");
-      const gap = cards ? parseFloat(getComputedStyle(cards).rowGap) || 6 : 6;
-      const pager = area.querySelector<HTMLElement>(".task-pager");
-      // The pager height already includes its padding. Auto margins only consume unused space.
-      const reserved = listed.length > 1 ? (pager?.offsetHeight || 38) : 0;
-      setPageSize(Math.min(6, Math.max(1, Math.floor((area.clientHeight - reserved + gap) / (minimum + gap)))));
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(area);
-    measure();
-    return () => observer.disconnect();
-  }, [view, completed, listed.length, pageSize]);
   const pageCount = Math.max(1, Math.ceil(listed.length / pageSize));
   const pageIndex = Math.min(pageSelection.key === pageKey ? pageSelection.index : 0, pageCount - 1);
   const pageTasks = listed.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize);
+  useEffect(() => {
+    if (api.panelHeightLimit) void api.panelHeightLimit().then(setHeightLimit).catch(() => {});
+  }, [panelVisible]);
+  useEffect(() => {
+    const resize = (height: number) => {
+      const next = Math.min(heightLimit, Math.max(260, Math.ceil(height)));
+      if (requestedHeight.current === next) return;
+      requestedHeight.current = next;
+      if (api.resizePanel) void api.resizePanel(next).catch(() => { requestedHeight.current = 0; });
+    };
+    if (view !== "tasks") { resize(heightLimit); return; }
+    const area = taskPage.current;
+    if (!area || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const cards = area.querySelector<HTMLElement>(".task-page");
+      const card = area.querySelector<HTMLElement>(".task-row");
+      const chrome = window.innerHeight - area.clientHeight;
+      const available = Math.max(0, heightLimit - chrome);
+      const gap = cards ? parseFloat(getComputedStyle(cards).rowGap) || 6 : 6;
+      const pager = area.querySelector<HTMLElement>(".task-pager");
+      if (card) {
+        const minimum = parseFloat(getComputedStyle(card).minHeight) || 62;
+        const capacity = Math.min(6, Math.max(1, Math.floor((available + gap) / (minimum + gap))));
+        const reserved = listed.length > capacity ? (pager?.offsetHeight || 38) : 0;
+        const size = Math.min(6, Math.max(1, Math.floor((available - reserved + gap) / (minimum + gap))));
+        if (size !== pageSize) { setPageSize(size); return; }
+      }
+      const empty = area.querySelector<HTMLElement>(".empty, .empty-small");
+      const content = cards?.scrollHeight || empty?.scrollHeight || 0;
+      resize(chrome + content + (pager?.offsetHeight || 0));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    if (shell.current) observer.observe(shell.current);
+    area.querySelectorAll<HTMLElement>(".task-row, .empty, .empty-small").forEach(node => observer.observe(node));
+    measure();
+    return () => observer.disconnect();
+  }, [view, filter, snapshot, pageSize, pageIndex, heightLimit, snoozing, toast, error, notificationWarning]);
   const turnPage = (index: number) => { setPageSelection({ key: pageKey, index }); setSnoozing(null); };
   const date = new Date();
   const dayText = `${date.getMonth() + 1}月${date.getDate()}日 ${["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()]}`;
@@ -237,7 +259,7 @@ export function TaskPanel({
     );
   }
   return (
-    <div className="panel-shell" onPointerDownCapture={() => { void api.panelInteraction?.().catch(() => {}); }} onKeyDownCapture={() => { void api.panelInteraction?.().catch(() => {}); }} data-list={view === "tasks" && listed.length > 0 ? "paged" : undefined}>
+    <div className="panel-shell" ref={shell} onPointerDownCapture={() => { void api.panelInteraction?.().catch(() => {}); }} onKeyDownCapture={() => { void api.panelInteraction?.().catch(() => {}); }} data-list={view === "tasks" && listed.length > 0 ? "paged" : undefined}>
       <div className="paper">
         <header className="topbar">
           <div className="brand">

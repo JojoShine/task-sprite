@@ -173,6 +173,7 @@ fn window_clamping_handles_small_and_negative_monitor() {
             w: 1440.,
             h: 900.,
         },
+        740.,
     );
     assert!(p.x + p.w <= 1440.);
     assert!(p.y + p.h <= 900.);
@@ -312,6 +313,7 @@ fn menu_panel_uses_one_logical_coordinate_space_across_displays() {
             w: 1280.,
             h: 878.,
         },
+        740.,
     );
     assert!(r.x >= 1440.);
     assert_eq!(r.x + r.w, 2720.);
@@ -326,6 +328,7 @@ fn menu_panel_uses_one_logical_coordinate_space_across_displays() {
             w: 1280.,
             h: 778.,
         },
+        740.,
     );
     assert_eq!(above.y, -776.);
 }
@@ -388,7 +391,7 @@ fn panels_stay_inside_common_screen_work_areas() {
             w: 300.,
             h: 230.,
         };
-        let beside = panel_position(pet, work);
+        let beside = panel_position(pet, work, 740.);
         let from_menu = cocoa_menu_position(
             height,
             Rect { x: width - 112., y: height - 24., w: 24., h: 24. },
@@ -398,6 +401,7 @@ fn panels_stay_inside_common_screen_work_areas() {
                 w: width,
                 h: height - 72.,
             },
+            740.,
         );
         for panel in [beside, from_menu] {
             assert!(panel.x >= work.x && panel.y >= work.y, "{width}x{height}");
@@ -416,11 +420,11 @@ fn pet_panel_prefers_above_when_it_fits_and_otherwise_uses_a_free_side() {
     use crate::windows::{panel_position, Rect};
     let area = Rect { x: 0., y: 24., w: 1440., h: 828. };
     let pet = Rect { x: 600., y: 600., w: 300., h: 230. };
-    let panel = panel_position(pet, area);
+    let panel = panel_position(pet, area, 740.);
     assert_eq!(panel.x + panel.w / 2., pet.x + pet.w / 2.);
     assert!(panel.y + panel.h <= pet.y + 90.);
     let lower = Rect { x: 0., y: 24., w: 1280., h: 648. };
-    let panel = panel_position(Rect { y: 440., ..pet }, lower);
+    let panel = panel_position(Rect { y: 440., ..pet }, lower, 740.);
     assert_eq!((panel.w, panel.h), (440., 648.));
     assert!(panel.x + panel.w + 12. <= pet.x + 60.);
     assert!(panel.y >= lower.y && panel.y + panel.h <= lower.y + lower.h);
@@ -475,7 +479,7 @@ fn panel_placement_avoids_the_character_at_edges_corners_and_screen_center() {
         for x in [area.x, area.x + (area.w - 300.) / 2., area.x + area.w - 300.] {
             for y in [area.y, area.y + (area.h - 230.) / 2., area.y + area.h - 230.] {
                 let original = Rect { x, y, w: 300., h: 230. };
-                let (pet, panel) = panel_layout(original, area);
+                let (pet, panel) = panel_layout(original, area, 740.);
                 let body = Rect { x: pet.x + 60., y: pet.y + 61., w: 180., h: 167. };
                 assert!(panel.x >= area.x && panel.y >= area.y, "{width}x{height} at {x},{y}");
                 assert!(panel.x + panel.w <= area.x + area.w && panel.y + panel.h <= area.y + area.h);
@@ -483,7 +487,7 @@ fn panel_placement_avoids_the_character_at_edges_corners_and_screen_center() {
                 assert!(panel.x + panel.w + 12. <= body.x || body.x + body.w + 12. <= panel.x || panel.y + panel.h + 12. <= body.y || body.y + body.h + 12. <= panel.y, "overlap at {width}x{height}, {x},{y}: {pet:?} {panel:?}");
                 assert!(pet.x >= area.x && pet.x + pet.w <= area.x + area.w);
                 assert_eq!(pet.y, original.y);
-                let (again, panel_again) = panel_layout(pet, area);
+                let (again, panel_again) = panel_layout(pet, area, 740.);
                 assert_eq!((again.x, again.y), (pet.x, pet.y));
                 assert_eq!((panel_again.x, panel_again.y, panel_again.w, panel_again.h), (panel.x, panel.y, panel.w, panel.h));
             }
@@ -495,11 +499,11 @@ fn top_corner_panels_use_the_free_side_without_moving_the_pet() {
     use crate::windows::{panel_layout, Rect};
     let area = Rect { x: 0., y: 24., w: 1440., h: 828. };
     let left = Rect { x: 0., y: 24., w: 300., h: 230. };
-    let (pet, panel) = panel_layout(left, area);
+    let (pet, panel) = panel_layout(left, area, 740.);
     assert_eq!(pet.x, left.x);
     assert!(panel.x >= left.x + 240. + 12.);
     let right = Rect { x: area.w - 300., ..left };
-    let (pet, panel) = panel_layout(right, area);
+    let (pet, panel) = panel_layout(right, area, 740.);
     assert_eq!(pet.x, right.x);
     assert!(panel.x + panel.w + 12. <= right.x + 60.);
 }
@@ -557,17 +561,17 @@ fn deleting_completed_tasks_leaves_other_tasks_and_their_reminders_unchanged() {
 #[test]
 fn mac_panel_is_anchored_below_the_status_item_and_clamped_to_its_screen() {
     let visible = Rect { x: 0., y: 48., w: 1440., h: 830. };
-    let middle = cocoa_menu_position(900., Rect { x: 1000., y: 878., w: 24., h: 22. }, visible);
+    let middle = cocoa_menu_position(900., Rect { x: 1000., y: 878., w: 24., h: 22. }, visible, 740.);
     assert_eq!((middle.x, middle.y, middle.w, middle.h), (792., 24., 440., 740.));
-    let right = cocoa_menu_position(900., Rect { x: 1416., y: 878., w: 24., h: 22. }, visible);
+    let right = cocoa_menu_position(900., Rect { x: 1416., y: 878., w: 24., h: 22. }, visible, 740.);
     assert_eq!((right.x, right.y), (1000., 24.));
-    let left = cocoa_menu_position(900., Rect { x: 0., y: 878., w: 24., h: 22. }, visible);
+    let left = cocoa_menu_position(900., Rect { x: 0., y: 878., w: 24., h: 22. }, visible, 740.);
     assert_eq!((left.x, left.y), (0., 24.));
 }
 
 #[test]
 fn mac_panel_stays_below_a_revealed_auto_hidden_menu_bar() {
-    let panel = cocoa_menu_position(900., Rect { x: 1000., y: 878., w: 24., h: 22. }, Rect { x: 0., y: 48., w: 1440., h: 852. });
+    let panel = cocoa_menu_position(900., Rect { x: 1000., y: 878., w: 24., h: 22. }, Rect { x: 0., y: 48., w: 1440., h: 852. }, 740.);
     assert_eq!(panel.y, 24.);
 }
 
@@ -583,7 +587,7 @@ fn resizing_task_card_preserves_the_pet_feet_and_panel_clearance() {
     assert_eq!(taller.y + taller.h - 169., original.y + 61.);
     let restored = resized_pet(taller, 230., area);
     assert_eq!(restored.y, original.y);
-    assert!(panel_clear_of_pet(panel_position(taller, area), taller));
+    assert!(panel_clear_of_pet(panel_position(taller, area, 740.), taller));
     let near_top = resized_pet(Rect { y: 10., ..original }, 450., area);
     assert_eq!(near_top.y, 0.);
 }
@@ -1155,4 +1159,17 @@ fn missing_new_credential_keeps_enabled_legacy_activation_during_upgrade() {
 fn absent_credential_does_not_activate_local_only_installation() {
     let dir=tempfile::tempdir().unwrap();let store=Store::open(&dir.path().join("local.db")).unwrap();
     crate::sync_credentials::restore_summary(&store,Ok(None)).unwrap();assert!(!store.sync_status().unwrap().bound);
+}
+
+#[test]
+fn panel_height_follows_content_and_keeps_its_anchor_inside_the_screen() {
+    use crate::windows::{Rect,fitted_panel};
+    let area=Rect{x:0.,y:24.,w:1440.,h:876.};
+    let original=Rect{x:300.,y:24.,w:440.,h:740.};
+    let short=fitted_panel(original,320.,area,false);
+    assert_eq!((short.y,short.h),(24.,320.));
+    let above_pet=fitted_panel(original,320.,area,true);
+    assert_eq!(above_pet.y+above_pet.h,original.y+original.h);
+    assert_eq!(fitted_panel(original,100.,area,false).h,260.);
+    assert_eq!(fitted_panel(original,1200.,area,false).h,740.);
 }

@@ -50,6 +50,8 @@ export const api = {
     invoke<void>("snooze", { id, minutes }),
   panelInteraction: () => invoke<void>("panel_interaction"),
   panelVisible: () => invoke<boolean>("is_panel_visible"),
+  panelHeightLimit: () => invoke<number>("resize_panel", { height:null }),
+  resizePanel: (height: number) => invoke<number>("resize_panel", { height }),
   toggle: () => invoke<void>("toggle_panel"),
   hide: () => invoke<void>("hide_panel"),
   notificationStatus: () => invoke<string>("notification_status"),
