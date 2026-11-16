@@ -21,7 +21,7 @@ jobs:
         include:
           - os: windows-latest
             platform: windows-x86_64
-          - os: macos-latest
+          - os: macos-15
             platform: macos-aarch64
           - os: macos-15-intel
             platform: macos-x86_64
@@ -112,7 +112,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: JojoShine/task-sprite-site
-          ref: fe44766387ed29bd6e0d1d846be813b5e9d415c6
+          ref: 7298891ae195388d9a4def6574ee9b445fbe89b3
           path: release-site
       - uses: actions/setup-node@v4
         with:

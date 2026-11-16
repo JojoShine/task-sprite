@@ -11,7 +11,7 @@ pub struct UpdateInfo {
 
 #[tauri::command]
 pub async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
-    let update = app.updater().map_err(|e| e.to_string())?
+    let update = app.updater_builder().timeout(std::time::Duration::from_secs(20)).build().map_err(|e| e.to_string())?
         .check().await.map_err(|e| e.to_string())?;
     Ok(UpdateInfo {
         current_version: app.package_info().version.to_string(),
@@ -22,7 +22,7 @@ pub async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
 
 #[tauri::command]
 pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<(), String> {
-    let update = app.updater().map_err(|e| e.to_string())?
+    let update = app.updater_builder().timeout(std::time::Duration::from_secs(20)).build().map_err(|e| e.to_string())?
         .check().await.map_err(|e| e.to_string())?
         .ok_or("目前没有可安装的更新")?;
     if update.version != version {
