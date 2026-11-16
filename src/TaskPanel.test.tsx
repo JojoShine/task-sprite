@@ -398,11 +398,13 @@ it("keeps six-task capacity after the native window shrinks on the last page",as
   await waitFor(()=>expect(api.resizePanel).toHaveBeenLastCalledWith(680));
   expect(screen.getAllByRole("button",{name:/^完成 /})).toHaveLength(6);
 });
-it("keeps the application update entry in the fixed footer on tasks and settings",()=>{
+it("keeps the update icon immediately to the left of the pin on tasks and settings",()=>{
   render(<TaskPanel snapshot={snapshot} onSnapshot={()=>{}}/>);
-  expect(screen.getByRole("button",{name:"应用更新"}).closest('footer')).not.toBeNull();
+  const entry=screen.getByRole("button",{name:"应用更新"}).parentElement!;
+  expect(entry.closest('.window-actions')).not.toBeNull();
+  expect(entry.nextElementSibling).toBe(screen.getByRole("button",{name:"固定任务窗口"}));
   fireEvent.click(screen.getByRole("button",{name:"设置"}));
-  expect(screen.getByRole("button",{name:"应用更新"}).closest('footer')).not.toBeNull();
+  expect(screen.getByRole("button",{name:"应用更新"}).parentElement!.nextElementSibling).toBe(screen.getByRole("button",{name:"固定任务窗口"}));
   expect(screen.getByLabelText("每日集中提醒时间")).toBeTruthy();
   expect(screen.getByText(/每天集中提醒今天到期和已延期的任务一次/)).toBeTruthy();
 });

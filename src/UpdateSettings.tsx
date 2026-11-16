@@ -35,7 +35,7 @@ export function UpdateSettings() {
     catch { setError("更新未完成，请重新检查后重试。现有任务已保留。"); setBusy(null); }
   }
   return <div className="app-update" ref={entry}>
-    <button type="button" className={`text-button icon-text update-trigger${update?.version ? " has-update" : ""}`} aria-haspopup="dialog" aria-expanded={open} onClick={toggle}><ArrowClockwise size={15}/>应用更新</button>
+    <button type="button" className={`update-trigger${update?.version ? " has-update" : ""}`} aria-label="应用更新" title="检查应用更新" aria-haspopup="dialog" aria-expanded={open} onClick={toggle}><ArrowClockwise size={21}/></button>
     {open && <section className="identity-card update-popover" role="dialog" aria-label="应用更新">
     <div className="identity-heading"><ArrowClockwise size={20}/><strong>应用更新</strong></div>
     <p>在线下载安装新版本，保留本机任务和设置。</p>

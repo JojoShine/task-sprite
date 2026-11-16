@@ -268,6 +268,7 @@ export function TaskPanel({
             <div><b>Task Sprite</b><small>你的桌面任务伙伴</small></div>
           </div>
           <div className="window-actions">
+            <UpdateSettings />
             <button className="pin-button" aria-label={snapshot.settings.panelPinned ? "取消窗口固定" : "固定任务窗口"} title={snapshot.settings.panelPinned ? "取消窗口固定，点击外部收起" : "保持任务窗口打开"} aria-pressed={!!snapshot.settings.panelPinned} disabled={pinBusy} onClick={()=>void togglePin()}><PushPin size={21} weight={snapshot.settings.panelPinned ? "fill" : "regular"}/></button>
             <button
               className="settings-button"
@@ -406,7 +407,7 @@ export function TaskPanel({
         </div>
         <footer className="panel-bottom-bar">
           {quitError && <span role="alert" title={quitError}>{quitError}</span>}
-          <div className="footer-left"><UpdateSettings /><a className="powered-by" href="https://tbtparent.me" onClick={event => { event.preventDefault(); void api.openWebsite().catch(e => setQuitError(message(e))); }}>Powered by TBTParent</a></div>
+          <a className="powered-by" href="https://tbtparent.me" onClick={event => { event.preventDefault(); void api.openWebsite().catch(e => setQuitError(message(e))); }}>Powered by TBTParent</a>
           <button className="text-button icon-text" aria-label="退出 Task Sprite" disabled={quitting} onClick={() => void quit()}><SignOut size={15}/>{quitting ? "正在退出…" : "退出 Task Sprite"}</button>
         </footer>
       </div>
