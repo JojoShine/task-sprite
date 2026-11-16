@@ -43,7 +43,7 @@ for (let attempt = 0; attempt < 30; attempt++) {
       }
       lastFailure = 'Pet DOM or Vite client is missing';
     }
-  } catch (error) { lastFailure = error.message; }
+  } catch (error) { lastFailure = error.cause?.code ? `${error.message}: ${error.cause.code}` : error.message; }
   await sleep(1000);
 }
 throw new Error(lastFailure);

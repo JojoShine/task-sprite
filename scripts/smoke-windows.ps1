@@ -35,7 +35,24 @@ if ($Installer) {
 }
 $process = $null
 $previousWebviewArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
-if ($DebugWebview) { $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=9222" }
+$debugPolicy = $null
+$previousPolicyArguments = $null
+$policyValueExisted = $false
+if ($DebugWebview) {
+    $arguments = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=9222"
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $arguments
+    # WebView2 ignores environment overrides for elevated hosts (including Actions runners).
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $debugPolicy = "HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+        $debugApp = Split-Path $Executable -Leaf
+        New-Item -Path $debugPolicy -Force | Out-Null
+        $policyValueExisted = (Get-Item $debugPolicy).GetValueNames() -contains $debugApp
+        if ($policyValueExisted) { $previousPolicyArguments = Get-ItemPropertyValue -Path $debugPolicy -Name $debugApp }
+        New-ItemProperty -Path $debugPolicy -Name $debugApp -Value $arguments -PropertyType String -Force | Out-Null
+    }
+}
 try {
     $process = Start-Process -FilePath (Resolve-Path $Executable) -PassThru -RedirectStandardOutput ci-logs/startup.stdout.log -RedirectStandardError ci-logs/startup.stderr.log
     $visible = 0
@@ -71,4 +88,8 @@ try {
 } finally {
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $previousWebviewArguments
     if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    if ($debugPolicy) {
+        if ($policyValueExisted) { Set-ItemProperty -Path $debugPolicy -Name $debugApp -Value $previousPolicyArguments }
+        else { Remove-ItemProperty -Path $debugPolicy -Name $debugApp -ErrorAction SilentlyContinue }
+    }
 }
