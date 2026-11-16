@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { weekSlots, deadlineLabel, isTaskOverdue } from "./deadlines";
+import { weekSlots, deadlineLabel, isTaskOverdue, isTaskUpcoming } from "./deadlines";
 it("offers Monday morning through next Monday morning", () => {
   const days = weekSlots(new Date(2026, 10, 16, 9));
   expect(days).toHaveLength(8);
@@ -34,4 +34,25 @@ it("labels every date by the calendar week rather than only the last slot", () =
   expect(weekSlots(now).map(d => d.label)).toEqual(["明天", "周日", "下周一", "下周二", "下周三", "下周四", "下周五", "下周六"]);
   for (const d of weekSlots(now)) expect(d.label).toBe(deadlineLabel(d.date, null, now));
   expect(weekSlots(new Date(2026, 11, 31, 20)).find(d => d.date === "2027-01-04")?.label).toBe("下周一");
+});
+
+it("warns from the previous calendar day even when more than 24 hours remain", () => {
+  const task = { dueDate: "2026-11-17", dueTime: "17:00", status: "todo" as const };
+  expect(isTaskUpcoming(task, new Date(2026, 10, 15, 23, 59))).toBe(false);
+  expect(isTaskUpcoming(task, new Date(2026, 10, 16, 0))).toBe(true);
+  expect(isTaskUpcoming(task, new Date(2026, 10, 16, 9))).toBe(true);
+  expect(isTaskUpcoming(task, new Date(2026, 10, 17, 16, 59))).toBe(true);
+  expect(isTaskUpcoming(task, new Date(2026, 10, 17, 17))).toBe(false);
+  expect(isTaskUpcoming(task, new Date(2026, 10, 18))).toBe(false);
+});
+it("does not warn for completed or undated tasks and keeps legacy all-day deadlines", () => {
+  const now = new Date(2026, 10, 16, 23, 59);
+  expect(isTaskUpcoming({dueDate: null}, now)).toBe(false);
+  expect(isTaskUpcoming({dueDate: "2026-11-17", status:"completed"}, now)).toBe(false);
+  expect(isTaskUpcoming({dueDate: "2026-11-16", dueTime:null}, now)).toBe(true);
+});
+it("uses the local calendar across year and leap day warning boundaries", () => {
+  expect(isTaskUpcoming({dueDate:"2027-01-01"}, new Date(2026,11,31,0))).toBe(true);
+  expect(isTaskUpcoming({dueDate:"2028-03-01"}, new Date(2028,1,28,23,59))).toBe(false);
+  expect(isTaskUpcoming({dueDate:"2028-03-01"}, new Date(2028,1,29,0))).toBe(true);
 });

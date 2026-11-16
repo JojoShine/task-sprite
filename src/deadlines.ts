@@ -32,3 +32,8 @@ export function isTaskOverdue(task: { dueDate: string | null; dueTime?: string |
   const day = localDay(now);
   return task.dueDate < day || (task.dueDate === day && !!task.dueTime && task.dueTime <= `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`);
 }
+export function isTaskUpcoming(task: { dueDate: string | null; dueTime?: string | null; status?: "todo" | "completed" }, now = new Date()) {
+  if (!task.dueDate || task.status === "completed" || isTaskOverdue(task, now)) return false;
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 12);
+  return task.dueDate <= localDay(tomorrow);
+}

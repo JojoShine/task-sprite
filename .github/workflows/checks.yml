@@ -6,13 +6,16 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: desktop-tests-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   native:
     name: Test-only / ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-15]
+        os: [windows-latest, macos-26, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +27,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          cache-on-failure: true
       - run: npm ci
       - name: Prepare original macOS credential agent for native tests
         if: runner.os == 'macOS'

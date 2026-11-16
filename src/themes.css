@@ -73,3 +73,222 @@
   }
 }
 :root[data-theme="dark"] .brand-mark { filter: brightness(0) invert(.9); }
+
+/* Whole-window skins: shared by the pet window, task panel and every sheet. */
+:root[data-skin="mint-ghost"], .skin-preview[data-skin="mint-ghost"] {
+  --paper: #f1faf4;
+  --ink: #243d33;
+  --muted: #526f60;
+  --faint: #6e887a;
+  --green: #376c51;
+  --red: #ac413b;
+  --gold: #997030;
+  --surface: #e4f1e8;
+  --surface-hover: #d7eadd;
+  --surface-strong: #cce3d3;
+  --line: #c8ddd0;
+  --border: #83a48e;
+  --bubble: #f6fff8;
+  --card-back: #d9eade;
+  --card-back-deep: #c5ddce;
+  --button-bg: #376c51;
+  --button-hover: #2b5941;
+  --button-text: #ffffff;
+  --danger-bg: #f5dfd9;
+  --low-ink: #3e6470;
+  --low-bg: #dcebef;
+  --shadow: #193b2924;
+  --skin-pattern: radial-gradient(#69967c18 1px, transparent 1px);
+  --skin-pattern-size: 12px 12px;
+}
+:root[data-skin="mint-ghost"][data-theme="dark"], :root[data-theme="dark"] .skin-preview[data-skin="mint-ghost"] {
+  --paper: #1e3029;
+  --ink: #e2f2e7;
+  --muted: #afc9ba;
+  --faint: #86a494;
+  --green: #a0d1b3;
+  --red: #ffad9e;
+  --gold: #e7c181;
+  --surface: #2b4035;
+  --surface-hover: #354e40;
+  --surface-strong: #405d4c;
+  --line: #40594a;
+  --border: #729a81;
+  --bubble: #263c30;
+  --card-back: #30483a;
+  --card-back-deep: #3a5546;
+  --button-bg: #416f55;
+  --button-hover: #508466;
+  --button-text: #ffffff;
+  --danger-bg: #503832;
+  --low-ink: #adcfdb;
+  --low-bg: #30464c;
+  --shadow: #00000040;
+  --skin-pattern: radial-gradient(#69967c18 1px, transparent 1px);
+  --skin-pattern-size: 12px 12px;
+}
+:root[data-skin="sunset-robot"], .skin-preview[data-skin="sunset-robot"] {
+  --paper: #fff2e7;
+  --ink: #4a302d;
+  --muted: #84605a;
+  --faint: #9c7770;
+  --green: #9e5140;
+  --red: #ac343e;
+  --gold: #9d712e;
+  --surface: #fae4d6;
+  --surface-hover: #f4d6c5;
+  --surface-strong: #efcbbb;
+  --line: #e8cbbd;
+  --border: #ba8a76;
+  --bubble: #fff7ec;
+  --card-back: #f1d7c6;
+  --card-back-deep: #e3bfac;
+  --button-bg: #9e5140;
+  --button-hover: #813f34;
+  --button-text: #fffaf4;
+  --danger-bg: #f4d8d6;
+  --low-ink: #536179;
+  --low-bg: #e4e5ef;
+  --shadow: #4c231f24;
+  --skin-pattern: repeating-linear-gradient(0deg, transparent 0 23px, #b9816912 23px 24px);
+  --skin-pattern-size: 24px 24px;
+}
+:root[data-skin="sunset-robot"][data-theme="dark"], :root[data-theme="dark"] .skin-preview[data-skin="sunset-robot"] {
+  --paper: #35262d;
+  --ink: #ffeadb;
+  --muted: #d7b4ad;
+  --faint: #ae8c88;
+  --green: #f2b198;
+  --red: #ffabae;
+  --gold: #ebc286;
+  --surface: #48323a;
+  --surface-hover: #573c43;
+  --surface-strong: #65484d;
+  --line: #61434b;
+  --border: #a5777e;
+  --bubble: #402c34;
+  --card-back: #503740;
+  --card-back-deep: #60434c;
+  --button-bg: #965d50;
+  --button-hover: #ab7062;
+  --button-text: #fffaf5;
+  --danger-bg: #58343d;
+  --low-ink: #c7c7e8;
+  --low-bg: #3c3c51;
+  --shadow: #00000040;
+  --skin-pattern: repeating-linear-gradient(0deg, transparent 0 23px, #b9816912 23px 24px);
+  --skin-pattern-size: 24px 24px;
+}
+:root[data-skin="snow-shiba"], .skin-preview[data-skin="snow-shiba"] {
+  --paper: #f3f8ff;
+  --ink: #2a3b52;
+  --muted: #5d7088;
+  --faint: #788aa2;
+  --green: #3e648d;
+  --red: #ac454e;
+  --gold: #8d732f;
+  --surface: #e7eff9;
+  --surface-hover: #dbe8f7;
+  --surface-strong: #cedff2;
+  --line: #ccdaeb;
+  --border: #8cabc9;
+  --bubble: #f8fbff;
+  --card-back: #deebf7;
+  --card-back-deep: #ccdded;
+  --button-bg: #3e648d;
+  --button-hover: #305275;
+  --button-text: #ffffff;
+  --danger-bg: #f6dfe4;
+  --low-ink: #46667f;
+  --low-bg: #deeaf4;
+  --shadow: #20395724;
+  --skin-pattern: radial-gradient(#91afd325 1px, transparent 1px);
+  --skin-pattern-size: 16px 16px;
+}
+:root[data-skin="snow-shiba"][data-theme="dark"], :root[data-theme="dark"] .skin-preview[data-skin="snow-shiba"] {
+  --paper: #202e40;
+  --ink: #e6f2ff;
+  --muted: #b0c3dc;
+  --faint: #8b9fb9;
+  --green: #a6c9f1;
+  --red: #ffadb6;
+  --gold: #e6cc91;
+  --surface: #2c3d52;
+  --surface-hover: #354962;
+  --surface-strong: #425775;
+  --line: #3f5672;
+  --border: #7193bb;
+  --bubble: #28394f;
+  --card-back: #324760;
+  --card-back-deep: #3d5470;
+  --button-bg: #446b94;
+  --button-hover: #557fa8;
+  --button-text: #ffffff;
+  --danger-bg: #503b4b;
+  --low-ink: #b4d4e8;
+  --low-bg: #30495b;
+  --shadow: #00000040;
+  --skin-pattern: radial-gradient(#91afd325 1px, transparent 1px);
+  --skin-pattern-size: 16px 16px;
+}
+:root[data-skin="cream-cat"], .skin-preview[data-skin="cream-cat"] {
+  --paper: #fff8e9;
+  --ink: #483b2e;
+  --muted: #7e6b54;
+  --faint: #99876e;
+  --green: #80613b;
+  --red: #b3433d;
+  --gold: #95702c;
+  --surface: #f5ebd5;
+  --surface-hover: #eee0c2;
+  --surface-strong: #e7d5af;
+  --line: #e4d5b8;
+  --border: #b6a078;
+  --bubble: #fffbef;
+  --card-back: #eee1c5;
+  --card-back-deep: #e2cfaa;
+  --button-bg: #80613b;
+  --button-hover: #664d2f;
+  --button-text: #fffdf4;
+  --danger-bg: #f4dfd4;
+  --low-ink: #526d70;
+  --low-bg: #e2ebe7;
+  --shadow: #4a382124;
+  --skin-pattern: linear-gradient(#aa926814 1px, transparent 1px), linear-gradient(90deg, #aa926814 1px, transparent 1px);
+  --skin-pattern-size: 20px 20px;
+}
+:root[data-skin="cream-cat"][data-theme="dark"], :root[data-theme="dark"] .skin-preview[data-skin="cream-cat"] {
+  --paper: #302b25;
+  --ink: #f8edda;
+  --muted: #c9bda5;
+  --faint: #a2957c;
+  --green: #d8bd88;
+  --red: #efad9e;
+  --gold: #dfc37f;
+  --surface: #40382d;
+  --surface-hover: #4c4234;
+  --surface-strong: #5b4e3c;
+  --line: #564a3a;
+  --border: #9d8861;
+  --bubble: #3a332a;
+  --card-back: #483e30;
+  --card-back-deep: #564937;
+  --button-bg: #79623f;
+  --button-hover: #90784f;
+  --button-text: #fff9ee;
+  --danger-bg: #513a30;
+  --low-ink: #bed1cd;
+  --low-bg: #344741;
+  --shadow: #00000040;
+  --skin-pattern: linear-gradient(#aa926814 1px, transparent 1px), linear-gradient(90deg, #aa926814 1px, transparent 1px);
+  --skin-pattern-size: 20px 20px;
+}
+
+:root[data-skin]:not([data-skin="default"]) :is(.paper, .bottom-sheet, .speech, .pet-count) {
+  background-image: var(--skin-pattern);
+  background-size: var(--skin-pattern-size);
+}
+.skin-preview { display:flex; flex-direction:column; gap:5px; width:66px; height:52px; padding:7px; background-color:var(--paper); background-image:var(--skin-pattern); background-size:var(--skin-pattern-size); border:2px solid var(--border); box-shadow:3px 3px 0 var(--shadow); }
+.skin-preview i { height:5px; width:25px; background:var(--green); }
+.skin-preview b { height:5px; background:var(--surface-strong); border-left:2px solid var(--border); }
+.skin-preview em { width:17px; height:5px; align-self:flex-end; background:var(--button-bg); }

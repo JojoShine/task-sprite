@@ -5,23 +5,23 @@ import { api } from "./api";
 import type { Snapshot } from "./types";
 const { handlers } = vi.hoisted(() => ({ handlers: new Map<string, (event: { payload: unknown }) => void>() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async (name, handler) => { handlers.set(name, handler); return () => handlers.delete(name); }) }));
-vi.mock("./api", () => ({ api: { snapshot: vi.fn(), panelVisible: vi.fn() }, message: (e: unknown) => String(e) }));
-const snapshot: Snapshot = { tasks: [], settings: { pet: "ghost", theme: "light", focusId: null, notifications: true, summaryTime: "09:00", quietStart: "23:00", quietEnd: "08:00", reduceMotion: true, showHint: true, petX: null, petY: null } };
+vi.mock("./api", () => ({ api: { snapshot: vi.fn(), panelVisible: vi.fn(), panelInteraction: vi.fn(async () => {}) }, message: (e: unknown) => String(e) }));
+const snapshot: Snapshot = { tasks: [], settings: { pet: "ghost", theme: "light", focusId: null, notifications: true, summaryTime: "09:00", quietStart: "23:00", quietEnd: "08:00", reduceMotion: true, showHint: true, cardPinned: true, petX: null, petY: null } };
 afterEach(() => { cleanup(); handlers.clear(); vi.resetAllMocks(); window.history.replaceState({}, "", "/"); });
-it("restores the head card when native panel visibility changes, including initial state", async () => {
+it("keeps a fixed pet card visible when the task window opens or closes", async () => {
   window.history.replaceState({}, "", "/?view=pet");
   vi.mocked(api.snapshot).mockResolvedValue(snapshot);
   vi.mocked(api.panelVisible).mockResolvedValue(true);
   render(<App />);
   await waitFor(() => expect(api.panelVisible).toHaveBeenCalled());
-  expect(screen.queryByRole("group", { name: "桌面任务提示" })).toBeNull();
-  expect(screen.getByRole("status", { name: "任务底座：待办0项，逾期0项" })).toBeTruthy();
+  expect(screen.getByRole("group", { name: "桌面任务提示" })).toBeTruthy();
+  expect(screen.getByRole("status", { name: "任务状态：待办0项，延期0项，正在做0项" })).toBeTruthy();
   act(() => handlers.get("panel-visibility")!({ payload: false }));
   expect(screen.getByRole("group", { name: "桌面任务提示" })).toBeTruthy();
   act(() => handlers.get("panel-visibility")!({ payload: true }));
-  expect(screen.queryByRole("group", { name: "桌面任务提示" })).toBeNull();
+  expect(screen.getByRole("group", { name: "桌面任务提示" })).toBeTruthy();
 });
-it("does not overwrite a newer panel visibility event with an older startup query", async () => {
+it("keeps a fixed card independent of a delayed task-window visibility query", async () => {
   window.history.replaceState({}, "", "/?view=pet");
   vi.mocked(api.snapshot).mockResolvedValue(snapshot);
   let resolve!: (visible: boolean) => void;
@@ -30,7 +30,7 @@ it("does not overwrite a newer panel visibility event with an older startup quer
   await waitFor(() => expect(api.panelVisible).toHaveBeenCalled());
   act(() => handlers.get("panel-visibility")!({ payload: true }));
   await act(async () => resolve(false));
-  expect(screen.queryByRole("group", { name: "桌面任务提示" })).toBeNull();
+  expect(screen.getByRole("group", { name: "桌面任务提示" })).toBeTruthy();
   act(() => handlers.get("panel-visibility")!({ payload: false }));
   expect(screen.getByRole("group", { name: "桌面任务提示" })).toBeTruthy();
 });

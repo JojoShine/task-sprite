@@ -1,7 +1,7 @@
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, Utc};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use std::{path::Path, time::Duration};
+use std::{collections::BTreeMap, path::Path, time::Duration};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +56,12 @@ pub struct TaskInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Settings {
     pub pet: String,
+    #[serde(default)]
+    pub panel_pinned: bool,
+    #[serde(default)]
+    pub card_pinned: bool,
+    #[serde(default = "default_skin")]
+    pub skin: String,
     pub focus_id: Option<String>,
     pub notifications: bool,
     pub summary_time: String,
@@ -68,13 +74,17 @@ pub struct Settings {
     pub pet_x: Option<f64>,
     pub pet_y: Option<f64>,
 }
+fn default_skin() -> String { "default".into() }
 fn default_theme() -> String {
     "system".into()
 }
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            pet: "shiba".into(),
+            pet: "robot".into(),
+            panel_pinned: false,
+            card_pinned: false,
+            skin: default_skin(),
             focus_id: None,
             notifications: true,
             summary_time: "09:00".into(),
@@ -88,11 +98,24 @@ impl Default for Settings {
         }
     }
 }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskStep {
+    pub id: String,
+    pub content: String,
+    pub created_at: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TaskWorkflow {
+    pub state: String,
+    pub steps: Vec<TaskStep>,
+}
 #[derive(Debug, Serialize)]
 pub struct Snapshot {
     #[serde(rename = "looksExpiresAt")]
     pub looks_expires_at: Option<String>,
     pub tasks: Vec<Task>,
+    pub workflows: BTreeMap<String, TaskWorkflow>,
     pub settings: Settings,
 }
 #[derive(Debug, Serialize)]
@@ -151,11 +174,20 @@ impl Store {
         if version < 4 { tx.execute_batch("ALTER TABLE tasks ADD COLUMN category TEXT;").map_err(err)?; }
         if version < 5 { tx.execute_batch("ALTER TABLE tasks ADD COLUMN activity_log TEXT NOT NULL DEFAULT '[]';").map_err(err)?; }
         tx.execute_batch("CREATE TABLE IF NOT EXISTS local_identity(id INTEGER PRIMARY KEY CHECK(id=1),user_id TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS deadline_delivered(task_id TEXT NOT NULL REFERENCES tasks(id),deadline TEXT NOT NULL,PRIMARY KEY(task_id,deadline));").map_err(err)?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS task_workflows(task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,state TEXT NOT NULL CHECK(state IN ('idle','working','waiting')),steps TEXT NOT NULL DEFAULT '[]');").map_err(err)?;
         tx.execute(
             "INSERT OR IGNORE INTO settings VALUES(1,?1)",
             [serde_json::to_string(&Settings::default()).map_err(err)?],
         )
         .map_err(err)?;
+        let raw_settings: String = tx.query_row("SELECT payload FROM settings WHERE id=1", [], |r| r.get(0)).map_err(err)?;
+        let mut preferences: serde_json::Value = serde_json::from_str(&raw_settings).map_err(err)?;
+        if preferences.get("cardPinned").is_none() {
+            let card_pinned = preferences.get("panelPinned").and_then(|v| v.as_bool()).unwrap_or(false);
+            preferences["cardPinned"] = serde_json::json!(card_pinned);
+            preferences["panelPinned"] = serde_json::json!(false);
+            tx.execute("UPDATE settings SET payload=?1 WHERE id=1", [preferences.to_string()]).map_err(err)?;
+        }
         tx.execute(
             "INSERT OR IGNORE INTO local_identity VALUES(1,?1,?2)",
             params![uuid::Uuid::new_v4().to_string(), Utc::now().to_rfc3339()],
@@ -206,14 +238,31 @@ impl Store {
             .conn
             .query_row("SELECT payload FROM settings WHERE id=1", [], |r| r.get(0))
             .map_err(err)?;
+        let settings: Settings = serde_json::from_str(&raw).map_err(err)?;
+        let mut workflows = BTreeMap::new();
+        let rows = self.conn.prepare("SELECT task_id,state,steps FROM task_workflows").map_err(err)?
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))
+            .map_err(err)?.collect::<std::result::Result<Vec<_>, _>>().map_err(err)?;
+        for (id, state, raw) in rows {
+            workflows.insert(id, TaskWorkflow { state, steps: serde_json::from_str(&raw).map_err(err)? });
+        }
+        for task in &tasks {
+            workflows.entry(task.id.clone()).or_insert_with(|| TaskWorkflow {
+                state: if task.status == "todo" && settings.focus_id.as_deref() == Some(&task.id)
+                    && !task.activity_log.last().is_some_and(|event| ["paused", "completed", "reopened"].contains(&event.action.as_str()))
+                    { "working" } else { "idle" }.into(), steps: Vec::new(),
+            });
+        }
         Ok(Snapshot {
+            workflows,
             looks_expires_at: self.looks_expires_at()?,
             tasks,
-            settings: serde_json::from_str(&raw).map_err(err)?,
+            settings,
         })
     }
     pub fn save_task(&mut self, i: TaskInput) -> Result<Task> {
         validate_task(&i)?;
+        self.ensure_workflows()?;
         let title = i.title.trim();
         let snapshot = self.snapshot()?;
         let old = if let Some(id) = &i.id {
@@ -258,6 +307,10 @@ impl Store {
         };
         let tx = self.conn.transaction().map_err(err)?;
         tx.execute("INSERT INTO tasks(id,title,description,priority,status,due_date,created_at,updated_at,completed_at,due_time,started_at,category,activity_log) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,priority=excluded.priority,status=excluded.status,due_date=excluded.due_date,due_time=excluded.due_time,updated_at=excluded.updated_at,completed_at=excluded.completed_at,started_at=excluded.started_at,category=excluded.category,activity_log=excluded.activity_log",params![t.id,t.title,t.description,t.priority,t.status,t.due_date,t.created_at,t.updated_at,t.completed_at,t.due_time,t.started_at,t.category,serde_json::to_string(&t.activity_log).map_err(err)?]).map_err(err)?;
+        tx.execute("INSERT OR IGNORE INTO task_workflows(task_id,state) VALUES(?1,'idle')", [&t.id]).map_err(err)?;
+        if t.status == "completed" || old.is_some_and(|task| task.status != t.status) {
+            tx.execute("UPDATE task_workflows SET state='idle' WHERE task_id=?1", [&t.id]).map_err(err)?;
+        }
         if t.status == "completed" {
             tx.execute("DELETE FROM snoozes WHERE task_id=?1", [&t.id])
                 .map_err(err)?;
@@ -297,6 +350,11 @@ impl Store {
         tx.commit().map_err(err)
     }
     pub fn set_settings(&mut self, s: Settings) -> Result<()> {
+        self.save_settings(s, false)
+    }
+    fn save_settings(&mut self, s: Settings, resume: bool) -> Result<()> {
+        if !["default", "mint-ghost", "sunset-robot", "snow-shiba", "cream-cat"].contains(&s.skin.as_str()) { return Err("请选择内置皮肤".into()); }
+        if self.snapshot()?.settings.skin != s.skin && s.skin != "default" { self.require_look(&s.skin)?; }
         if !["system", "light", "dark"].contains(&s.theme.as_str()) {
             return Err("请选择跟随系统、浅色或深色主题".into());
         }
@@ -313,12 +371,8 @@ impl Store {
         if s.pet_x.is_some_and(|x| !x.is_finite()) || s.pet_y.is_some_and(|y| !y.is_finite()) {
             return Err("窗口位置无效".into());
         }
+        self.ensure_workflows()?;
         let current = self.snapshot()?;
-        if current.settings.focus_id != s.focus_id && current.tasks.iter().any(|task| {
-            current.settings.focus_id.as_deref() == Some(task.id.as_str()) && task.status == "todo"
-        }) {
-            return Err("请先暂停或完成正在做的任务，再开始其他任务".into());
-        }
         if let Some(id) = &s.focus_id {
             if !current.tasks
                 .iter()
@@ -328,8 +382,8 @@ impl Store {
             }
         }
         let tx = self.conn.transaction().map_err(err)?;
-        if s.focus_id != current.settings.focus_id {
-            if let Some(id) = &s.focus_id {
+        if let Some(id) = &s.focus_id {
+            if (resume || s.focus_id != current.settings.focus_id) && current.workflows.get(id).is_none_or(|workflow| workflow.state != "working") {
                 let task = current.tasks.iter().find(|t| &t.id == id).ok_or("任务不存在")?;
                 let now = Utc::now().to_rfc3339();
                 let mut log = task.activity_log.clone();
@@ -337,6 +391,7 @@ impl Store {
                 let action = if task.started_at.is_some() || log.iter().any(|e| ["started", "resumed"].contains(&e.action.as_str())) { "resumed" } else { "started" };
                 log.push(ActivityEvent::new(action, &now));
                 tx.execute("UPDATE tasks SET started_at=COALESCE(started_at,?1),updated_at=?1,activity_log=?2 WHERE id=?3", params![now,serde_json::to_string(&log).map_err(err)?,id]).map_err(err)?;
+                tx.execute("UPDATE task_workflows SET state='working' WHERE task_id=?1", [id]).map_err(err)?;
             }
         }
         tx.execute("UPDATE settings SET payload=?1 WHERE id=1", [serde_json::to_string(&s).map_err(err)?]).map_err(err)?;
@@ -345,22 +400,67 @@ impl Store {
     pub fn set_focus(&mut self, id: Option<String>) -> Result<()> {
         let mut s = self.snapshot()?.settings;
         s.focus_id = id;
-        self.set_settings(s)
+        self.save_settings(s, true)
     }
-    pub fn pause_task(&mut self, id: &str) -> Result<()> {
+    // Materialize legacy focus before a focus change or cloud download can hide it.
+    pub(crate) fn ensure_workflows(&self) -> Result<()> {
+        for (id, workflow) in self.snapshot()?.workflows {
+            self.conn.execute("INSERT OR IGNORE INTO task_workflows(task_id,state,steps) VALUES(?1,?2,?3)",
+                params![id, workflow.state, serde_json::to_string(&workflow.steps).map_err(err)?]).map_err(err)?;
+        }
+        Ok(())
+    }
+    pub fn set_task_execution(&mut self, id: &str, state: &str) -> Result<()> {
+        if !["idle", "working", "waiting"].contains(&state) { return Err("任务执行状态无效".into()); }
+        self.ensure_workflows()?;
         let snapshot = self.snapshot()?;
-        let task = snapshot.tasks.iter().find(|t|t.id == id && t.status == "todo").ok_or("待办任务不存在")?;
-        if snapshot.settings.focus_id.as_deref() != Some(id) { return Err("只能暂停正在做的任务".into()); }
+        let task = snapshot.tasks.iter().find(|task| task.id == id && task.status == "todo").ok_or("待办任务不存在")?;
+        if state == "working" {
+            let mut settings = snapshot.settings;
+            settings.focus_id = Some(id.into());
+            return self.save_settings(settings, true);
+        }
+        let previous = &snapshot.workflows[id].state;
+        if previous == state { return Ok(()); }
         let mut settings = snapshot.settings;
-        settings.focus_id = None;
+        if state == "idle" && settings.focus_id.as_deref() == Some(id) { settings.focus_id = None; }
         let mut log = task.activity_log.clone();
         seed_history(task, &mut log);
         let now = Utc::now().to_rfc3339();
-        log.push(ActivityEvent::new("paused", &now));
+        if previous == "working" { log.push(ActivityEvent::new("paused", &now)); }
         let tx = self.conn.transaction().map_err(err)?;
+        tx.execute("UPDATE task_workflows SET state=?1 WHERE task_id=?2", params![state,id]).map_err(err)?;
         tx.execute("UPDATE tasks SET updated_at=?1,activity_log=?2 WHERE id=?3",params![now,serde_json::to_string(&log).map_err(err)?,id]).map_err(err)?;
         tx.execute("UPDATE settings SET payload=?1 WHERE id=1",[serde_json::to_string(&settings).map_err(err)?]).map_err(err)?;
         tx.commit().map_err(err)
+    }
+    pub fn append_task_step(&mut self, id: &str, content: &str) -> Result<()> {
+        let content = content.trim();
+        if content.is_empty() || content.chars().count() > 2000 { return Err("跟进记录需要 1–2000 个字".into()); }
+        self.ensure_workflows()?;
+        let snapshot = self.snapshot()?;
+        if !snapshot.tasks.iter().any(|task| task.id == id && task.status == "todo") { return Err("待办任务不存在".into()); }
+        let mut workflow = snapshot.workflows.get(id).cloned().ok_or("任务不存在")?;
+        if !["working", "waiting"].contains(&workflow.state.as_str()) { return Err("请先开始任务再记录进展".into()); }
+        workflow.steps.push(TaskStep { id: uuid::Uuid::new_v4().to_string(), content: content.into(), created_at: Utc::now().to_rfc3339() });
+        self.conn.execute("UPDATE task_workflows SET steps=?1 WHERE task_id=?2", params![serde_json::to_string(&workflow.steps).map_err(err)?,id]).map_err(err)?;
+        Ok(())
+    }
+    pub fn delete_task_step(&mut self, id: &str, step_id: &str) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        let mut workflow = snapshot.workflows.get(id).cloned().ok_or("任务不存在")?;
+        let original_len = workflow.steps.len();
+        workflow.steps.retain(|step| step.id != step_id);
+        if workflow.steps.len() == original_len { return Err("跟进记录不存在".into()); }
+        self.conn.execute("UPDATE task_workflows SET steps=?1 WHERE task_id=?2", params![serde_json::to_string(&workflow.steps).map_err(err)?,id]).map_err(err)?;
+        Ok(())
+    }
+    pub fn pause_task(&mut self, id: &str) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        if !snapshot.workflows.get(id).is_some_and(|workflow| ["working", "waiting"].contains(&workflow.state.as_str())) {
+            return Err("只能暂停正在做或等待中的任务".into());
+        }
+        self.set_task_execution(id, "idle")
     }
     pub fn snooze(&mut self, id: &str, minutes: i64, now: DateTime<FixedOffset>) -> Result<()> {
         if minutes != 30 && minutes != 120 {
@@ -480,3 +580,7 @@ pub(crate) fn seed_history(task: &Task, log: &mut Vec<ActivityEvent>) {
         if !recorded { log.push(ActivityEvent::new("completed", at)); }
     }
 }
+
+#[cfg(test)]
+#[path = "workflow_tests.rs"]
+mod workflow_tests;

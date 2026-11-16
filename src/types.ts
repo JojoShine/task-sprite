@@ -1,5 +1,6 @@
 export type FreePetId = "cat" | "shiba" | "robot" | "ghost";
 export type PetId = FreePetId | "fox" | "panda" | "mint-ghost" | "sunset-robot" | "snow-shiba" | "cream-cat";
+export type SkinId = "default" | "mint-ghost" | "sunset-robot" | "snow-shiba" | "cream-cat";
 export type Theme = "system" | "light" | "dark";
 export type VisualState = "idle" | "reminder" | "celebrate" | "rest" | "working" | "interaction";
 export interface TaskActivity {
@@ -31,6 +32,7 @@ export type TaskInput = Pick<
 };
 export interface Settings {
   pet: PetId;
+  skin?: SkinId;
   focusId: string | null;
   notifications: boolean;
   summaryTime: string;
@@ -38,11 +40,17 @@ export interface Settings {
   quietEnd: string;
   reduceMotion: boolean;
   showHint: boolean;
+  panelPinned?: boolean;
+  cardPinned?: boolean;
   theme: Theme;
   petX: number | null;
   petY: number | null;
 }
+export type ExecutionState = "idle" | "working" | "waiting";
+export interface TaskStep { id: string; content: string; createdAt: string; }
+export interface TaskWorkflow { state: ExecutionState; steps: TaskStep[]; }
 export interface Snapshot {
+  workflows?: Record<string, TaskWorkflow>;
   looksExpiresAt?: string | null;
   tasks: Task[];
   settings: Settings;

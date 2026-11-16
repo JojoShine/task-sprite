@@ -1,0 +1,11 @@
+.pet-compact .pet-card { display: none; }
+.pet-compact .pet-count { min-width: 180px; white-space: nowrap; }
+.pet-view .pet-count { display:grid; grid-template-columns:repeat(3,max-content); justify-content:center; gap:0 10px; width:204px; height:34px; left:48px; padding:4px 8px; font-size:14px; line-height:20px; }
+.pet-view .pet-drag { bottom:13px; }
+.pet-current-label.waiting-progress { color:var(--gold); }
+.pet-current-actions .current-pager { gap:1px; }
+.current-pager>span { min-width:31px; }
+.current-pager>button { width:22px; height:26px; }
+.pet-current-actions { gap:6px; }
+.pet-current-actions>.pet-current-complete { width:46px; }
+.pet-current-actions>.pet-resume { width:62px; }

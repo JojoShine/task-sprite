@@ -1,0 +1,58 @@
+.panel-content:has(> .editor) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-right: 14px;
+}
+.editor {
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+}
+.editor > .section-heading { flex-shrink: 0; margin-right:0; }
+.editor-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-inline: -8px;
+  padding: 0 8px 12px;
+  scrollbar-gutter: auto;
+}
+.editor-scroll > * { flex-shrink: 0; }
+.editor-save-bar {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  background: var(--paper);
+  margin-right: 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+  z-index: 1;
+}
+.editor-save-bar .save { margin-top: 0; }
+.task-chain { border-top: 1px solid var(--line); padding-top: 14px; }
+.task-chain h3 { font-size: 14px; font-weight: 550; margin: 0 0 12px; }
+.task-chain ol { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 1px solid var(--line); }
+.task-chain li { padding: 0 0 14px; }
+.task-chain time { font-size: 12px; color: var(--muted); }
+.task-chain li p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 5px 0 0; line-height: 1.6; }
+.step-composer label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--muted); }
+.step-composer textarea { width: 100%; min-height: 80px; resize: vertical; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.step-composer > button { margin-top: 8px; }
+.bottom-sheet:has(.deadline-view) { display: flex; flex-direction: column; overflow: hidden; }
+.bottom-sheet .deadline-view { min-height: 0; overflow-y: auto; }
+.bottom-sheet .deadline-view > * { flex-shrink: 0; }
+
+.step-composer .add-step { width:100%; margin:10px 0 14px; min-height:40px; font-size:14px; }
+.editor .step-composer textarea:focus { outline:none; box-shadow:none; border-color:var(--muted); background:var(--surface); }
+.task-chain .step-composer+ol { margin-top:6px; }
+.editor .task-timing { margin:4px 0; padding-top:8px; }
+.followup-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.task-chain .step-delete { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:28px; height:28px; padding:4px; color:var(--muted); }
+.task-chain .step-delete:hover { color:var(--red); background:var(--danger-bg); }
+.followup-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.followup-toolbar h3 { margin:0; }
+.followup-toolbar .progress-toggle { display:inline-flex; align-items:center; gap:4px; min-height:30px; padding:5px 9px; font-size:13px; }

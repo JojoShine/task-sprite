@@ -302,6 +302,7 @@ impl Store {
         })
     }
     pub fn sync_apply(&mut self, response: SyncResponse) -> Result<()> {
+        self.ensure_workflows()?;
         // Capture changes made while HTTP was in flight before acknowledging the sent version.
         self.sync_capture()?;
         let mut settings = self.snapshot()?.settings;
@@ -420,6 +421,7 @@ impl Store {
         tx.commit().map_err(err)
     }
     pub fn sync_resolve(&mut self, id: &str, keep_local: bool) -> Result<()> {
+        self.ensure_workflows()?;
         self.sync_capture()?;
         let raw: String = self
             .conn
@@ -436,7 +438,7 @@ impl Store {
             if settings.focus_id.as_deref() == Some(id) {
                 settings.focus_id = None;
             }
-            pause_history(&tx, id)?;
+            // Cloud can queue its single focus without stopping parallel local work.
         } else if !keep_local {
             apply_change(&tx, &remote, &mut settings)?;
         }
@@ -492,19 +494,31 @@ fn apply_change(
     }
     let synced = change.task.as_ref().ok_or("同步响应缺少任务")?;
     let mut task = synced.task.clone();
+    let workflow: Option<String> = tx.query_row("SELECT state FROM task_workflows WHERE task_id=?1", [&task.id], |r| r.get(0)).optional().map_err(err)?;
+    let locally_active = workflow.as_deref().is_some_and(|state| ["working", "waiting"].contains(&state));
     let previous: Option<(String, Option<String>)> = tx.query_row("SELECT activity_log,started_at FROM tasks WHERE id=?1", [&task.id], |r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(err)?;
     if let Some((raw, started)) = previous {
         let previous: Vec<ActivityEvent> = serde_json::from_str(&raw).map_err(err)?;
         // The accepted remote sequence is causal even when device clocks change.
-        let mut merged = task.activity_log.clone();
-        for event in previous { if !merged.iter().any(|old|old.id==event.id) {merged.push(event);} }
+        let mut merged = if locally_active { previous.clone() } else { task.activity_log.clone() };
+        if locally_active {
+            for event in &task.activity_log {
+                // Legacy cloud focus transitions cannot close parallel local effort.
+                if !merged.iter().any(|old|old.id == event.id)
+                    && !["started", "resumed", "paused"].contains(&event.action.as_str()) {
+                    merged.push(event.clone());
+                }
+            }
+        } else {
+            for event in previous { if !merged.iter().any(|old|old.id==event.id) {merged.push(event);} }
+        }
         task.activity_log = merged;
         task.started_at = match (started, task.started_at) {
             (Some(a),Some(b)) => Some(if chrono::DateTime::parse_from_rfc3339(&a).ok() <= chrono::DateTime::parse_from_rfc3339(&b).ok() {a} else {b}),
             (a,b) => a.or(b),
         };
     }
-    if synced.in_progress && task.status == "todo" && task.activity_log.last().is_some_and(|event|
+    if !locally_active && synced.in_progress && task.status == "todo" && task.activity_log.last().is_some_and(|event|
         ["paused", "completed", "reopened"].contains(&event.action.as_str())) {
         // Accepting the active cloud state starts a new local interval now.
         let now = chrono::Utc::now().to_rfc3339();
@@ -528,31 +542,15 @@ fn apply_change(
     }
     tx.execute("INSERT INTO tasks(id,title,description,priority,status,due_date,due_time,created_at,updated_at,completed_at,started_at,category,activity_log) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,priority=excluded.priority,status=excluded.status,due_date=excluded.due_date,due_time=excluded.due_time,created_at=excluded.created_at,updated_at=excluded.updated_at,completed_at=excluded.completed_at,started_at=excluded.started_at,category=excluded.category,activity_log=excluded.activity_log",params![t.id,t.title,t.description,t.priority,t.status,t.due_date,t.due_time,t.created_at,t.updated_at,t.completed_at,t.started_at,t.category,encode(&t.activity_log)?]).map_err(err)?;
     if synced.in_progress && t.status == "todo" {
-        if let Some(other) = settings.focus_id.as_deref().filter(|id| *id != t.id) { pause_history(tx, other)?; }
         settings.focus_id = Some(t.id.clone())
-    } else if t.status == "todo" {
-        // Applying a remote paused state also ends retained local-only activity.
-        pause_history(tx, &t.id)?;
     }
+    let state = if t.status == "completed" { "idle" } else if locally_active {
+        workflow.as_deref().unwrap_or("idle")
+    } else if synced.in_progress { "working" } else { "idle" };
+    tx.execute("INSERT INTO task_workflows(task_id,state) VALUES(?1,?2) ON CONFLICT(task_id) DO UPDATE SET state=excluded.state", params![t.id,state]).map_err(err)?;
     if t.status == "completed" {
         tx.execute("DELETE FROM snoozes WHERE task_id=?1", [&t.id])
             .map_err(err)?;
-    }
-    Ok(())
-}
-
-fn pause_history(tx: &rusqlite::Transaction<'_>, id: &str) -> Result<()> {
-    let row: Option<(String,Option<String>,Option<String>)> = tx.query_row("SELECT activity_log,started_at,completed_at FROM tasks WHERE id=?1 AND status='todo'",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(err)?;
-    let Some((raw,started,completed))=row else {return Ok(());};
-    let mut log: Vec<ActivityEvent>=serde_json::from_str(&raw).map_err(err)?;
-    if log.is_empty() {
-        if let Some(at)=started {log.push(ActivityEvent::new("started",&at));}
-        if let Some(at)=completed {log.push(ActivityEvent::new("completed",&at));}
-    }
-    if log.last().is_some_and(|e|["started","resumed"].contains(&e.action.as_str())) {
-        let now=chrono::Utc::now().to_rfc3339();
-        log.push(ActivityEvent::new("paused",&now));
-        tx.execute("UPDATE tasks SET activity_log=?1,updated_at=?2 WHERE id=?3",params![encode(&log)?,now,id]).map_err(err)?;
     }
     Ok(())
 }
