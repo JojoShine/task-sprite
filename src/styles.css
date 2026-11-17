@@ -1400,3 +1400,11 @@ button:not(:disabled):active { opacity: .75; }
 .wardrobe-tabs { display:flex; gap:8px; }
 .wardrobe-tabs > button { flex:1; padding:8px 4px; font-size:13px; background:var(--surface); border:1px solid transparent; clip-path:var(--pixel-cut); }
 .wardrobe-tabs > button[aria-pressed="true"] { background:var(--surface-strong); border-color:var(--border); }
+
+/* Keep the empty-state header readable at the compact panel height. */
+.panel-content.empty-view { container-type:inline-size; }
+.empty-view .date-line { margin-bottom:14px; }
+.empty-view .list-tabs { gap:14px; margin-top:0; padding-top:0; }
+.empty-view .empty { padding:20px 0; }
+.task-row.is-reminded { outline:2px solid #d79a43; outline-offset:-2px; background:color-mix(in srgb,var(--surface) 87%,#d79a43 13%); }
+.reminder-banner { padding:9px 12px; margin:0 0 10px; border-left:3px solid #d79a43; background:#d79a4318; font-size:14px; overflow-wrap:anywhere; }

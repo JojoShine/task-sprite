@@ -40,9 +40,9 @@ it('saves each preference immediately without closing settings',async()=>{
  expect(changed).toHaveBeenCalledWith(expect.objectContaining({settings:expect.objectContaining({notifications:false})}));
  expect(close).not.toHaveBeenCalled();
  expect(screen.queryByRole('button',{name:'保存设置'})).toBeNull();
- vi.mocked(api.preferences).mockResolvedValue({tasks:[],settings:{...preferences,notifications:false,summaryTime:'10:30'}});
- fireEvent.change(screen.getByLabelText('每日集中提醒时间'),{target:{value:'10:30'}});
- await waitFor(()=>expect(api.preferences).toHaveBeenCalledWith({summaryTime:'10:30'}));
+ vi.mocked(api.preferences).mockResolvedValue({tasks:[],settings:{...preferences,notifications:false,quietStart:'22:30'}});
+ fireEvent.change(screen.getByLabelText('免打扰开始'),{target:{value:'22:30'}});
+ await waitFor(()=>expect(api.preferences).toHaveBeenCalledWith({quietStart:'22:30'}));
 });
 it('restores a preference and shows the error when immediate saving fails',async()=>{
  vi.mocked(api.preferences).mockRejectedValueOnce(new Error('设置未保存'));

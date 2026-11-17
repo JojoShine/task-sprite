@@ -556,3 +556,13 @@ it('pins the pet card independently of task-window pinning and visibility',()=>{
  rerender(<Pet snapshot={{...snapshot,tasks:[task],settings:{...snapshot.settings,cardPinned:false,panelPinned:true,focusId:task.id}}} animation={null} onSnapshot={()=>{}} panelVisible={false}/>);
  expect(screen.queryByRole('group',{name:'当前任务卡片'})).toBeNull();
 });
+
+it('keeps ten-second rotation running while the cursor stays on a card and snapshots refresh',()=>{
+ const tasks=['甲','乙','丙'].map((title,i)=>({id:String(i),title,description:'',priority:'med' as const,status:'todo' as const,dueDate:null,dueTime:null,createdAt:'2026-11-13',updatedAt:'2026-11-13',completedAt:null}));
+ const current:Snapshot={...snapshot,tasks,settings:{...snapshot.settings,focusId:'0',reduceMotion:true},workflows:{'0':{state:'working',steps:[]},'1':{state:'working',steps:[]},'2':{state:'waiting',steps:[]}}};
+ const {rerender}=render(<Pet snapshot={current} animation={null} onSnapshot={()=>{}}/>);
+ fireEvent.mouseEnter(screen.getByRole('group',{name:'当前任务卡片'}));
+ act(()=>vi.advanceTimersByTime(9000));rerender(<Pet snapshot={{...current,tasks:[...tasks]}} animation={null} onSnapshot={()=>{}}/>);
+ act(()=>vi.advanceTimersByTime(1000));expect(screen.getByRole('button',{name:'正在做：乙'})).toBeTruthy();
+ act(()=>vi.advanceTimersByTime(10000));expect(screen.getByRole('button',{name:'等待进展：丙'})).toBeTruthy();
+})

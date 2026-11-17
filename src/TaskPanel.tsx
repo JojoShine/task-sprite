@@ -33,12 +33,14 @@ export function TaskPanel({
   notificationWarning,
   animation,
   panelVisible = true,
+  reminderIds = [],
 }: {
   snapshot: Snapshot;
   onSnapshot: (next: Snapshot) => void;
   notificationWarning?: string;
   animation?: VisualState | null;
   panelVisible?: boolean;
+  reminderIds?: string[];
 }) {
   const [view, setView] = useState<"tasks" | "settings" | "editor" | "wardrobe">("tasks");
   const [editing, setEditing] = useState<Task>();
@@ -61,7 +63,7 @@ export function TaskPanel({
   const [snoozing, setSnoozing] = useState<string | null>(null);
   const today = localDay();
   const groups = groupTasks(snapshot.tasks);
-  const todos = Object.values(groups).flat();
+  const todos = Object.values(groups).flat().sort((a,b)=>Number(reminderIds.includes(b.id))-Number(reminderIds.includes(a.id)));
   const inProgress = todos.filter(task => taskWorkflow(snapshot, task).state !== "idle");
   const completedTasks = snapshot.tasks.filter(task => task.status === "completed").sort((a,b) => new Date(b.completedAt ?? b.updatedAt).getTime() - new Date(a.completedAt ?? a.updatedAt).getTime() || a.id.localeCompare(b.id));
   const listed = completed ? completedTasks.slice(0,15) : filter === "progress" ? inProgress : todos;
@@ -71,7 +73,9 @@ export function TaskPanel({
       setPageSelection({ key: "", index: 0 });
     }
   }, [panelVisible]);
-  const pageKey = completed ? "completed" : `${filter}:${groups.overdue.map(task => task.id).join("|")}`;
+  const reminderKey = reminderIds.join("|");
+  useEffect(()=>{if(reminderKey && view!=="editor"){setView("tasks");setFilter("todo");setPageSelection({key:"",index:0});}},[reminderKey]);
+  const pageKey = completed ? "completed" : `${reminderKey}:${filter}:${groups.overdue.map(task => task.id).join("|")}`;
   useEffect(() => setPageSelection({ key: pageKey, index: 0 }), [pageKey, pageSize]);
   const pageCount = Math.max(1, Math.ceil(listed.length / pageSize));
   const pageIndex = Math.min(pageSelection.key === pageKey ? pageSelection.index : 0, pageCount - 1);
@@ -161,7 +165,8 @@ export function TaskPanel({
     const overdueDays = task.dueDate ? daysOverdue(task.dueDate, today) : 0;
     return (
       <div
-        className={`task-row ${task.status === "completed" ? "completed" : overdue ? "is-overdue" : upcoming ? "is-upcoming" : ""}`}
+        data-task-id={task.id}
+        className={`task-row ${reminderIds.includes(task.id) ? "is-reminded" : ""} ${task.status === "completed" ? "completed" : overdue ? "is-overdue" : upcoming ? "is-upcoming" : ""}`}
         key={task.id}
       >
         <button
@@ -306,6 +311,7 @@ export function TaskPanel({
             />
           ) : (
             <div className="task-home">
+              {reminderIds.some(id=>todos.some(t=>t.id===id)) && <p className="reminder-banner" role="status">到期提醒：{todos.filter(t=>reminderIds.includes(t.id)).map(t=>t.title).join("、")}</p>}
               <div className="date-line">
                 {dayText}
                 <span className="local-badge">

@@ -76,17 +76,6 @@ export function Settings({
           }
         />
       </label>
-      <label>
-        每日集中提醒时间
-        <input
-          disabled={busy}
-          type="time"
-          value={draft.summaryTime}
-          onChange={(e) => changeTime("summaryTime", e.target.value)}
-          onBlur={() => { if (!draft.summaryTime) setDraft(current => ({...current, summaryTime:settings.summaryTime})); }}
-        />
-      </label>
-      <p className="micro">每天集中提醒今天到期和已延期的任务一次。09:00 是默认时间，可以修改。</p>
       <div className="field-row">
         <label>
           免打扰开始

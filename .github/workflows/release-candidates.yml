@@ -112,7 +112,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: JojoShine/task-sprite-site
-          ref: 7298891ae195388d9a4def6574ee9b445fbe89b3
+          ref: 4f13aa764277aae3918da66ec43676852029892d
           path: release-site
       - uses: actions/setup-node@v4
         with:

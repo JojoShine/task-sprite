@@ -11,6 +11,10 @@ pub struct SyncTask {
     #[serde(flatten)]
     pub task: Task,
     pub in_progress: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub follow_ups: Option<Vec<crate::store::TaskStep>>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,12 +76,18 @@ enum CachedAuthorization {
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
     pub bound: bool,
+    pub device_name: String,
     #[serde(default)]
     pub license: Option<LicenseStatus>,
     pub account_id: Option<String>,
     pub enabled: bool,
     pub pending: usize,
     pub conflicts: Vec<MutationResult>,
+}
+pub fn device_name(installation: &str) -> String {
+    let compact = installation.replace('-', "");
+    let number = u32::from_str_radix(compact.get(..8).unwrap_or("0"),16).unwrap_or(0) % 10000;
+    format!("{} · {number:04}", if cfg!(target_os="windows") { "Windows" } else { "Mac" })
 }
 fn encode(value: &impl Serialize) -> Result<String> {
     serde_json::to_string(value).map_err(err)
@@ -167,20 +177,42 @@ impl Store {
             .tasks
             .into_iter()
             .map(|task| {
-                let active = snapshot.settings.focus_id.as_deref() == Some(&task.id)
-                    && task.status == "todo";
+                let state = snapshot.workflows.get(&task.id).map(|w| w.state.as_str()).unwrap_or("idle");
+                let active = state != "idle" && task.status == "todo";
                 (
                     task.id.clone(),
                     SyncTask {
-                        task,
                         in_progress: active,
+                        execution_state: Some(if active { state } else { "idle" }.into()),
+                        follow_ups: Some(snapshot.workflows.get(&task.id).map(|w|w.steps.clone()).unwrap_or_default()),
+                        task,
                     },
                 )
             })
             .collect())
     }
+    fn sync_reconcile_completions(&self) -> Result<()> {
+        let conflicts: Vec<(String,String)> = self.conn.prepare("SELECT id,conflict FROM sync_rows WHERE conflict IS NOT NULL").map_err(err)?.query_map([], |r| Ok((r.get(0)?,r.get(1)?))).map_err(err)?.collect::<std::result::Result<_,_>>().map_err(err)?;
+        if conflicts.is_empty() { return Ok(()); }
+        let local = self.sync_local()?;
+        let mut settings = self.snapshot()?.settings;
+        let tx = self.conn.unchecked_transaction().map_err(err)?;
+        for (id, raw) in conflicts {
+            let result: MutationResult = serde_json::from_str(&raw).map_err(err)?;
+            if result.reason.as_deref() != Some("revision_changed") { continue; }
+            if let (Some(local), Some(remote)) = (local.get(&id), result.remote.as_ref()) {
+                if !remote.deleted && remote.task.as_ref().is_some_and(|cloud| completion_can_merge(local,cloud)) {
+                    apply_change(&tx,remote,&mut settings)?;
+                    tx.execute("UPDATE sync_rows SET revision=?1,baseline=?2,pending=NULL,conflict=NULL WHERE id=?3",params![remote.revision,encode(&remote.task)?,id]).map_err(err)?;
+                }
+            }
+        }
+        tx.execute("UPDATE settings SET payload=?1 WHERE id=1",[encode(&settings)?]).map_err(err)?;
+        tx.commit().map_err(err)
+    }
     fn sync_capture(&self) -> Result<()> {
         self.sync_initialize()?;
+        self.sync_reconcile_completions()?;
         let local = self.sync_local()?;
         for id in local.keys() {
             self.conn
@@ -291,6 +323,7 @@ impl Store {
         };
         Ok(SyncStatus {
             bound,
+            device_name: device_name(&self.local_identity()?.user_id),
             license,
             account_id: meta.as_ref().map(|m| m.0.clone()),
             enabled: meta.is_some_and(|m| m.1),
@@ -350,6 +383,15 @@ impl Store {
                 )
                 .map_err(err)?;
             } else if result.status == "conflict" {
+                if result.reason.as_deref() == Some("revision_changed") {
+                    if let (Some(local), Some(remote)) = (pending.task.as_ref(), result.remote.as_ref()) {
+                        if remote.task.as_ref().is_some_and(|cloud| completion_can_merge(local, cloud)) && !remote.deleted {
+                            apply_change(&tx, remote, &mut settings)?;
+                            tx.execute("UPDATE sync_rows SET revision=?1,baseline=?2,pending=NULL,conflict=NULL WHERE id=?3", params![remote.revision, encode(&remote.task)?, result.task_id]).map_err(err)?;
+                            continue;
+                        }
+                    }
+                }
                 tx.execute(
                     "UPDATE sync_rows SET conflict=?1 WHERE id=?2",
                     params![encode(&result)?, result.task_id],
@@ -472,6 +514,14 @@ impl Store {
         tx.commit().map_err(err)
     }
 }
+fn completion_can_merge(local: &SyncTask, remote: &SyncTask) -> bool {
+    let a = &local.task; let b = &remote.task;
+    a.status == "todo" && b.status == "completed" &&
+    (remote.follow_ups.is_none() || local.follow_ups == remote.follow_ups) &&
+    a.title == b.title && a.description == b.description && a.priority == b.priority &&
+    a.category == b.category && a.due_date == b.due_date && a.due_time == b.due_time &&
+    !a.activity_log.iter().any(|event| event.action == "reopened" && b.completed_at.as_ref().is_some_and(|at| event.at >= *at))
+}
 fn apply_change(
     tx: &rusqlite::Transaction<'_>,
     change: &Change,
@@ -495,30 +545,22 @@ fn apply_change(
     let synced = change.task.as_ref().ok_or("同步响应缺少任务")?;
     let mut task = synced.task.clone();
     let workflow: Option<String> = tx.query_row("SELECT state FROM task_workflows WHERE task_id=?1", [&task.id], |r| r.get(0)).optional().map_err(err)?;
-    let locally_active = workflow.as_deref().is_some_and(|state| ["working", "waiting"].contains(&state));
+    let locally_active = task.status != "completed" && synced.execution_state.is_none() && workflow.as_deref().is_some_and(|state| ["working", "waiting"].contains(&state));
     let previous: Option<(String, Option<String>)> = tx.query_row("SELECT activity_log,started_at FROM tasks WHERE id=?1", [&task.id], |r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(err)?;
     if let Some((raw, started)) = previous {
         let previous: Vec<ActivityEvent> = serde_json::from_str(&raw).map_err(err)?;
         // The accepted remote sequence is causal even when device clocks change.
-        let mut merged = if locally_active { previous.clone() } else { task.activity_log.clone() };
-        if locally_active {
-            for event in &task.activity_log {
-                // Legacy cloud focus transitions cannot close parallel local effort.
-                if !merged.iter().any(|old|old.id == event.id)
-                    && !["started", "resumed", "paused"].contains(&event.action.as_str()) {
-                    merged.push(event.clone());
-                }
-            }
-        } else {
-            for event in previous { if !merged.iter().any(|old|old.id==event.id) {merged.push(event);} }
-        }
+        // Retain every server event. Dropping legacy pause/resume events made
+        // the local payload differ from its acknowledged baseline forever.
+        let mut merged = task.activity_log.clone();
+        for event in previous { if !merged.iter().any(|old|old.id==event.id) {merged.push(event);} }
         task.activity_log = merged;
         task.started_at = match (started, task.started_at) {
             (Some(a),Some(b)) => Some(if chrono::DateTime::parse_from_rfc3339(&a).ok() <= chrono::DateTime::parse_from_rfc3339(&b).ok() {a} else {b}),
             (a,b) => a.or(b),
         };
     }
-    if !locally_active && synced.in_progress && task.status == "todo" && task.activity_log.last().is_some_and(|event|
+    if !locally_active && synced.in_progress && synced.execution_state.as_deref() != Some("waiting") && task.status == "todo" && task.activity_log.last().is_some_and(|event|
         ["paused", "completed", "reopened"].contains(&event.action.as_str())) {
         // Accepting the active cloud state starts a new local interval now.
         let now = chrono::Utc::now().to_rfc3339();
@@ -543,11 +585,19 @@ fn apply_change(
     tx.execute("INSERT INTO tasks(id,title,description,priority,status,due_date,due_time,created_at,updated_at,completed_at,started_at,category,activity_log) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,priority=excluded.priority,status=excluded.status,due_date=excluded.due_date,due_time=excluded.due_time,created_at=excluded.created_at,updated_at=excluded.updated_at,completed_at=excluded.completed_at,started_at=excluded.started_at,category=excluded.category,activity_log=excluded.activity_log",params![t.id,t.title,t.description,t.priority,t.status,t.due_date,t.due_time,t.created_at,t.updated_at,t.completed_at,t.started_at,t.category,encode(&t.activity_log)?]).map_err(err)?;
     if synced.in_progress && t.status == "todo" {
         settings.focus_id = Some(t.id.clone())
-    }
-    let state = if t.status == "completed" { "idle" } else if locally_active {
+    } else if settings.focus_id.as_deref() == Some(t.id.as_str()) { settings.focus_id = None; }
+    let state = if t.status == "completed" { "idle" } else if let Some(state) = synced.execution_state.as_deref() {
+        if !["idle", "working", "waiting"].contains(&state) || (state != "idle") != synced.in_progress { return Err("云端执行状态无效".into()); }
+        state
+    } else if locally_active {
         workflow.as_deref().unwrap_or("idle")
     } else if synced.in_progress { "working" } else { "idle" };
     tx.execute("INSERT INTO task_workflows(task_id,state) VALUES(?1,?2) ON CONFLICT(task_id) DO UPDATE SET state=excluded.state", params![t.id,state]).map_err(err)?;
+    if let Some(steps) = &synced.follow_ups {
+        let mut ids = std::collections::BTreeSet::new();
+        if steps.iter().any(|step| step.content.trim().is_empty() || step.content.chars().count()>2000 || !ids.insert(&step.id) || chrono::DateTime::parse_from_rfc3339(&step.created_at).is_err()) {return Err("云端跟进记录格式无效".into());}
+        tx.execute("UPDATE task_workflows SET steps=?1 WHERE task_id=?2",params![encode(steps)?,t.id]).map_err(err)?;
+    }
     if t.status == "completed" {
         tx.execute("DELETE FROM snoozes WHERE task_id=?1", [&t.id])
             .map_err(err)?;

@@ -8,7 +8,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     io::Read,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::{Emitter, Manager};
 #[cfg(any(debug_assertions, feature = "local-sync"))]
@@ -21,6 +21,10 @@ pub static PENDING: AtomicBool = AtomicBool::new(true);
 pub fn signal() { PENDING.store(true, Ordering::Release); }
 static UPLOAD_ADMISSION: std::sync::Mutex<()> = std::sync::Mutex::new(());
 static WAIT_ADMISSION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static LAST_SYNC: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+static RETRY_UNTIL: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+static LICENSE_CHECK: std::sync::Mutex<Option<(u64,String,Instant)>> = std::sync::Mutex::new(None);
+
 fn with_admission<T>(gate: &std::sync::Mutex<()>, valid: impl FnOnce() -> bool, send: impl FnOnce() -> Result<T>) -> Result<T> {
     let _guard = gate.lock().map_err(|_| "同步请求暂不可用")?;
     if !valid() { return Err("同步设置已改变，请等待自动重试".into()); }
@@ -57,6 +61,11 @@ fn cache_license_if_current(store: &crate::store::Store, epoch: &AtomicU64, gene
 fn admitted_request<T: DeserializeOwned>(app: &tauri::AppHandle, generation: u64, path: &str, credential: &Credential, body: &impl Serialize) -> Result<T> {
     let gate = if path == "/changes/wait" { &WAIT_ADMISSION } else { &UPLOAD_ADMISSION };
     with_admission(gate, || true, || {
+        if path == "/sync" {
+            let mut last=LAST_SYNC.lock().map_err(|_| "同步计时暂不可用")?;
+            if let Some(at)=*last { if let Some(wait)=Duration::from_secs(5).checked_sub(at.elapsed()) { std::thread::sleep(wait); } }
+            *last=Some(Instant::now());
+        }
         let state = app.state::<AppState>();
         authenticated_call(&state.0, &GENERATION, generation, credential, true, || request(path, Some(credential), body), |snapshot| { let _ = app.emit("snapshot", snapshot); })
     })
@@ -97,6 +106,7 @@ fn request<T: DeserializeOwned>(
     credential: Option<&Credential>,
     body: &impl Serialize,
 ) -> Result<T> {
+    if RETRY_UNTIL.lock().map_err(|_| "同步退避状态暂不可用")?.is_some_and(|at|at>Instant::now()) {return Err("请求较多，等待服务端允许后自动重试（429）".into());}
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(25))
         .redirect(reqwest::redirect::Policy::none())
@@ -109,6 +119,11 @@ fn request<T: DeserializeOwned>(
     let response = request
         .send()
         .map_err(|_| "同步服务暂时无法连接，任务已保存在本机；联网后会重试")?;
+    if response.status().as_u16() == 429 {
+        let seconds=response.headers().get("retry-after").and_then(|h|h.to_str().ok()).and_then(|v|v.parse::<u64>().ok()).unwrap_or(60).clamp(1,300);
+        *RETRY_UNTIL.lock().map_err(|_| "同步退避状态暂不可用")?=Some(Instant::now()+Duration::from_secs(seconds));
+        return Err("请求较多，等待服务端允许后自动重试（429）".into());
+    }
     if response.status().as_u16() == 401 {
         return Err("此电脑的授权已失效或已停用，请重新激活授权".into());
     }
@@ -151,7 +166,7 @@ pub fn activation_body(code: &str, installation_id: &str, expected_account: Opti
         return Err("授权码格式不正确，请输入完整授权码".into());
     }
     let code = format!("TS-{}", compact[2..].as_bytes().chunks(4).map(|part| std::str::from_utf8(part).unwrap()).collect::<Vec<_>>().join("-"));
-    let mut body = serde_json::json!({"code":code,"installationId":installation_id,"deviceName":"Task Sprite · Mac"});
+    let mut body = serde_json::json!({"code":code,"installationId":installation_id,"deviceName":crate::sync_store::device_name(installation_id)});
     if let Some(account) = expected_account { body["expectedAccountId"] = account.into(); }
     Ok(body)
 }
@@ -211,15 +226,18 @@ pub fn synchronize(app: &tauri::AppHandle) -> Result<SyncStatus> {
         return Err("同步工作空间不一致，请使用原工作空间的授权码".into());
     }
     let mut credential = credential;
-    let license: LicenseStatus = admitted_request(app, generation, "/licenses/status", &credential, &serde_json::json!({}))?;
-    if license.account_id != credential.account { return Err("授权工作空间不一致".into()); }
-    credential.license = Some(license);
-    {
-        let state = app.state::<AppState>();
-        let store = state.0.lock().map_err(|_| "数据库暂不可用")?;
-        if !cache_license_if_current(&store, &GENERATION, generation, &credential.account, credential.license.as_ref().ok_or("授权服务响应异常")?)? { return store.sync_status(); }
+    let check_license = LICENSE_CHECK.lock().map_err(|_| "授权检查暂不可用")?.as_ref().is_none_or(|(g,a,at)| *g!=generation || *a!=credential.account || at.elapsed()>=Duration::from_secs(300));
+    if check_license {
+        let license: LicenseStatus = admitted_request(app,generation,"/licenses/status",&credential,&serde_json::json!({}))?;
+        if license.account_id != credential.account {return Err("授权工作空间不一致".into());}
+        credential.license=Some(license);
+        let state=app.state::<AppState>();let store=state.0.lock().map_err(|_| "数据库暂不可用")?;
+        if !cache_license_if_current(&store,&GENERATION,generation,&credential.account,credential.license.as_ref().unwrap())? {return store.sync_status();}
+        *LICENSE_CHECK.lock().map_err(|_| "授权检查暂不可用")?=Some((generation,credential.account.clone(),Instant::now()));
     }
-    for _ in 0..100 {
+    let mut last_payload = None;
+    for _ in 0..5 {
+
         let request_body = {
             let state = app.state::<AppState>();
             let store = state.0.lock().map_err(|_| "数据库暂不可用")?;
@@ -228,6 +246,9 @@ pub fn synchronize(app: &tauri::AppHandle) -> Result<SyncStatus> {
                 None => { drop(store); return status(app); }
             }
         };
+        let payload=serde_json::to_string(&request_body.mutations.iter().map(|m|(&m.task_id,m.deleted,&m.task)).collect::<Vec<_>>()).map_err(|e|e.to_string())?;
+        if !request_body.mutations.is_empty() && last_payload.as_ref()==Some(&payload) {return Err("同步内容没有变化，已暂停重复上传，稍后自动重试".into());}
+        last_payload=Some(payload);
         let response: SyncResponse = admitted_request(app, generation, "/sync", &credential, &request_body)?;
         let more = response.has_more;
         {

@@ -9,6 +9,7 @@ export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   useTheme(snapshot?.settings.theme, snapshot?.settings.skin, snapshot?.looksExpiresAt);
   const [error, setError] = useState("");
+  const [reminderIds, setReminderIds] = useState<string[]>([]);
   const [panelVisible, setPanelVisible] = useState(false);
   const [animation, setAnimation] = useState<VisualState | null>(null);
   const animationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,6 +40,7 @@ export function App() {
           },
         ],
         ["snapshot", (s: Snapshot) => setSnapshot(s)],
+        ["reminder-tasks", (ids: string[]) => setReminderIds(ids)],
         ["panel-visibility", (visible: boolean) => { visibilityVersion++; setPanelVisible(visible); }],
         ["clock", () => setClock((c) => c + 1)],
         ["sync-status", () => { void refresh().catch(() => {}); }],
@@ -127,6 +129,7 @@ export function App() {
       snapshot={snapshot}
       onSnapshot={setSnapshot}
       panelVisible={panelVisible}
+      reminderIds={reminderIds}
       notificationWarning={notificationWarning}
       animation={animation}
     />

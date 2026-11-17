@@ -96,10 +96,10 @@ fn workflow_sync_roundtrip_preserves_parallel_work_and_chain() {
     store.set_focus(Some(second.id.clone())).unwrap();store.set_task_execution(&second.id,"waiting").unwrap();
     let before=store.snapshot().unwrap();
     let request=store.sync_request().unwrap();
-    assert_eq!(request.mutations.iter().filter(|m|m.task.as_ref().unwrap().in_progress).count(),1);
+    assert_eq!(request.mutations.iter().filter(|m|m.task.as_ref().unwrap().in_progress).count(),2);
     let mut changes=Vec::new();let mut results=Vec::new();
     for mutation in request.mutations {
-        let mut remote=mutation.task.clone().unwrap();remote.in_progress=mutation.task_id==first.id;
+        let mut remote=mutation.task.clone().unwrap();remote.in_progress=mutation.task_id==first.id;remote.execution_state=None;remote.follow_ups=None;
         changes.push(Change{task_id:mutation.task_id.clone(),revision:1,deleted:false,task:Some(remote)});
         results.push(MutationResult{mutation_id:mutation.mutation_id,task_id:mutation.task_id,status:"accepted".into(),revision:Some(1),reason:None,remote:None,active_task:None});
     }
@@ -198,4 +198,34 @@ fn workflow_legacy_fixed_card_migrates_without_pinning_task_window() {
     drop(store);let store=Store::open(&path).unwrap();let snapshot=store.snapshot().unwrap();
     assert!(snapshot.settings.card_pinned);assert!(!snapshot.settings.panel_pinned);
     assert_eq!(snapshot.tasks[0].id,task.id);assert_eq!(store.local_identity().unwrap().user_id,identity);
+}
+
+#[test]
+fn workflow_explicit_cloud_wait_and_pause_replace_local_execution() {
+    use crate::sync_store::*;
+    let mut store=Store::memory().unwrap(); store.sync_link("a").unwrap(); store.sync_enable().unwrap();
+    let task=store.save_task(input("Remote state")).unwrap();store.set_focus(Some(task.id.clone())).unwrap();
+    let request=store.sync_request().unwrap();let m=&request.mutations[0];
+    let mut remote=m.task.clone().unwrap();remote.in_progress=true;remote.execution_state=Some("waiting".into());
+    store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:m.mutation_id.clone(),task_id:task.id.clone(),status:"accepted".into(),revision:Some(1),reason:None,remote:None,active_task:None}],changes:vec![Change{task_id:task.id.clone(),revision:1,deleted:false,task:Some(remote.clone())}],cursor:1,has_more:false}).unwrap();
+    assert_eq!(store.snapshot().unwrap().workflows[&task.id].state,"waiting");
+    remote.in_progress=false;remote.execution_state=Some("idle".into());
+    store.sync_apply(SyncResponse{results:vec![],changes:vec![Change{task_id:task.id.clone(),revision:2,deleted:false,task:Some(remote)}],cursor:2,has_more:false}).unwrap();
+    assert_eq!(store.snapshot().unwrap().workflows[&task.id].state,"idle");
+    assert!(store.sync_request().unwrap().mutations.is_empty());
+}
+
+#[test]
+fn workflow_followups_upload_and_remote_delete_are_idempotent() {
+    use crate::sync_store::*;
+    let mut store=Store::memory().unwrap();store.sync_link("a").unwrap();store.sync_enable().unwrap();
+    let task=store.save_task(input("Shared chain")).unwrap();store.set_focus(Some(task.id.clone())).unwrap();store.append_task_step(&task.id,"等待对方确认").unwrap();
+    let request=store.sync_request().unwrap();let m=&request.mutations[0];
+    assert_eq!(m.task.as_ref().unwrap().follow_ups.as_ref().unwrap().len(),1);
+    store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:m.mutation_id.clone(),task_id:task.id.clone(),status:"accepted".into(),revision:Some(1),reason:None,remote:None,active_task:None}],changes:vec![Change{task_id:task.id.clone(),revision:1,deleted:false,task:m.task.clone()}],cursor:1,has_more:false}).unwrap();
+    assert!(store.sync_request().unwrap().mutations.is_empty());
+    let mut remote=m.task.clone().unwrap();remote.follow_ups=Some(vec![]);
+    store.sync_apply(SyncResponse{results:vec![],changes:vec![Change{task_id:task.id.clone(),revision:2,deleted:false,task:Some(remote)}],cursor:2,has_more:false}).unwrap();
+    assert!(store.snapshot().unwrap().workflows[&task.id].steps.is_empty());
+    assert!(store.sync_request().unwrap().mutations.is_empty());
 }

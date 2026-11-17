@@ -22,6 +22,7 @@ export function SyncSettings({ onChange }: { onChange: (next: Snapshot) => void 
   }
   return <section className="identity-card sync-card" aria-label="授权与云同步">
     <div className="identity-heading"><ArrowsClockwise size={20} /><strong>授权与云同步</strong><span>{status?.enabled ? "同步已开启" : status?.bound ? "已激活" : "仅本机"}</span></div>
+    {status?.deviceName && <p className="micro">本机设备：{status.deviceName}</p>}
     <p>默认仅在本机保存任务。电脑和微信小程序输入同一授权码，即可使用同一任务工作空间。</p>
     {!status && !error && <small>正在读取本机授权状态…</small>}
     {status && (!status.bound || recovering) && <form className="sync-license-form" onSubmit={event => { event.preventDefault(); void run(async () => {

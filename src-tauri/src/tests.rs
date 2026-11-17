@@ -110,7 +110,7 @@ fn no_tasks_no_notification_and_sleep_does_not_catch_up_history() {
     assert!(plan(&s, now("2026-11-13 10:00")).unwrap().is_none());
     s.save_task(input("过期", Some("2026-11-10"))).unwrap();
     let n = plan(&s, now("2026-11-15 10:00")).unwrap().unwrap();
-    assert_eq!(n.summary_day.as_deref(), Some("2026-11-15"));
+    assert!(n.summary_day.is_none());
 }
 #[test]
 fn equal_quiet_bounds_disable_quiet_interval() {
@@ -210,7 +210,7 @@ fn failed_notification_submission_keeps_reminders_pending() {
     assert_eq!(s.snoozes().unwrap().len(), 1);
     assert!(deliver(&mut s, now("2026-11-13 09:01"), |_| Ok(())).unwrap());
     assert!(s.snoozes().unwrap().is_empty());
-    assert!(s.delivered("2026-11-13").unwrap());
+    assert!(!s.delivered("2026-11-13").unwrap());
 }
 
 #[test]
@@ -220,8 +220,7 @@ fn half_day_deadline_is_saved_validated_and_reminded_once() {
     let i: TaskInput = serde_json::from_value(raw.clone()).unwrap();
     let task = s.save_task(i).unwrap();
     assert_eq!(serde_json::to_value(&task).unwrap()["dueTime"], "17:00");
-    let summary = plan(&s, now("2026-11-13 09:00")).unwrap().unwrap();
-    s.record_delivery(&summary).unwrap();
+    assert!(plan(&s, now("2026-11-13 09:00")).unwrap().is_none());
     assert!(deliver(&mut s, now("2026-11-13 15:00"), |_| Ok(())).unwrap());
     assert!(plan(&s, now("2026-11-13 15:29")).unwrap().is_none());
     assert!(deliver(&mut s, now("2026-11-13 15:30"), |_| Ok(())).unwrap());
@@ -763,10 +762,10 @@ fn conflict_choice_uses_the_latest_downloaded_cloud_version() {
     let mut store=Store::memory().unwrap();store.sync_link("a").unwrap();store.sync_enable().unwrap();
     let task=store.save_task(input("local",None)).unwrap();let sent=store.sync_request().unwrap();
     let mut remote_task=task.clone();remote_task.title="cloud v1".into();
-    let remote=Change{task_id:task.id.clone(),revision:1,deleted:false,task:Some(SyncTask{task:remote_task.clone(),in_progress:false})};
+    let remote=Change{task_id:task.id.clone(),revision:1,deleted:false,task:Some(SyncTask{task:remote_task.clone(),in_progress:false,execution_state:None,follow_ups:None})};
     store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:sent.mutations[0].mutation_id.clone(),task_id:task.id.clone(),status:"conflict".into(),revision:None,reason:Some("revision_changed".into()),remote:Some(remote.clone()),active_task:None}],changes:vec![remote],cursor:1,has_more:false}).unwrap();
     remote_task.title="cloud v2".into();
-    store.sync_apply(SyncResponse{results:vec![],changes:vec![Change{task_id:task.id.clone(),revision:2,deleted:false,task:Some(SyncTask{task:remote_task,in_progress:false})}],cursor:2,has_more:false}).unwrap();
+    store.sync_apply(SyncResponse{results:vec![],changes:vec![Change{task_id:task.id.clone(),revision:2,deleted:false,task:Some(SyncTask{task:remote_task,in_progress:false,execution_state:None,follow_ups:None})}],cursor:2,has_more:false}).unwrap();
     store.sync_resolve(&task.id,false).unwrap();assert_eq!(store.snapshot().unwrap().tasks[0].title,"cloud v2");
 }
 #[test]
@@ -775,11 +774,11 @@ fn active_conflict_keeps_a_new_offline_task_in_the_queue() {
     let mut store=Store::memory().unwrap();store.sync_link("a").unwrap();store.sync_enable().unwrap();
     let task=store.save_task(input("offline work",None)).unwrap();store.set_focus(Some(task.id.clone())).unwrap();let sent=store.sync_request().unwrap();
     let mut active=task.clone();active.id="cloud-active".into();active.title="cloud work".into();
-    let active=Change{task_id:active.id.clone(),revision:1,deleted:false,task:Some(SyncTask{task:active,in_progress:true})};
+    let active=Change{task_id:active.id.clone(),revision:1,deleted:false,task:Some(SyncTask{task:active,in_progress:true,execution_state:None,follow_ups:None})};
     store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:sent.mutations[0].mutation_id.clone(),task_id:task.id.clone(),status:"conflict".into(),revision:None,reason:Some("another_task_in_progress".into()),remote:Some(Change{task_id:task.id.clone(),revision:0,deleted:true,task:None}),active_task:Some(active.clone())}],changes:vec![active],cursor:1,has_more:false}).unwrap();
     store.sync_resolve(&task.id,false).unwrap();
     let snapshot=store.snapshot().unwrap();assert!(snapshot.tasks.iter().any(|t|t.title=="offline work"));assert_eq!(snapshot.settings.focus_id.as_deref(),Some("cloud-active"));
-    let request=store.sync_request().unwrap();let pending=request.mutations.iter().find(|m|m.task_id==task.id).unwrap();assert!(!pending.deleted);assert!(!pending.task.as_ref().unwrap().in_progress);
+    let request=store.sync_request().unwrap();let pending=request.mutations.iter().find(|m|m.task_id==task.id).unwrap();assert!(!pending.deleted);assert!(pending.task.as_ref().unwrap().in_progress);
 }
 #[test]
 fn task_labels_survive_reopen_and_csv_and_old_tasks_remain_unlabelled() {
@@ -1045,7 +1044,7 @@ fn accepting_remote_paused_state_preserves_parallel_local_active_history() {
     let mut store=Store::memory().unwrap();store.sync_link("a").unwrap();store.sync_enable().unwrap();
     let task=store.save_task(input("local interval",None)).unwrap();store.set_focus(Some(task.id.clone())).unwrap();
     let request=store.sync_request().unwrap();let mut remote=request.mutations[0].task.clone().unwrap();
-    remote.in_progress=false;remote.task.activity_log.push(crate::store::ActivityEvent::new("paused",&chrono::Utc::now().to_rfc3339()));
+    remote.in_progress=false;remote.execution_state=None;remote.task.activity_log.push(crate::store::ActivityEvent::new("paused",&chrono::Utc::now().to_rfc3339()));
     let local=crate::store::ActivityEvent::new("resumed","2099-11-13T01:00:00Z");
     let mut log=store.snapshot().unwrap().tasks.remove(0).activity_log;log.push(local.clone());
     store.conn.execute("UPDATE tasks SET activity_log=?1 WHERE id=?2",rusqlite::params![serde_json::to_string(&log).unwrap(),task.id]).unwrap();
@@ -1056,7 +1055,7 @@ fn accepting_remote_paused_state_preserves_parallel_local_active_history() {
     // Pending local edits intentionally block automatic downloads; choosing the
     // remote side of a later conflict exercises the merge itself.
     let request=store.sync_request().unwrap();let sent=request.mutations.iter().find(|m|m.task_id==task.id).unwrap();
-    let mut authoritative=sent.task.clone().unwrap();authoritative.in_progress=false;
+    let mut authoritative=sent.task.clone().unwrap();authoritative.in_progress=false;authoritative.execution_state=None;
     authoritative.task.activity_log.retain(|e|e.id!=local.id);
     authoritative.task.activity_log.push(crate::store::ActivityEvent::new("paused",&chrono::Utc::now().to_rfc3339()));
     let remote=Change{task_id:task.id.clone(),revision:2,deleted:false,task:Some(authoritative)};
@@ -1076,7 +1075,7 @@ fn selecting_remote_active_state_resumes_after_retained_local_pause() {
     let task=store.save_task(input("remote active",None)).unwrap();
     store.set_focus(Some(task.id.clone())).unwrap();store.pause_task(&task.id).unwrap();
     let request=store.sync_request().unwrap();let sent=&request.mutations[0];
-    let mut remote=sent.task.clone().unwrap();remote.in_progress=true;remote.task.activity_log.truncate(1);
+    let mut remote=sent.task.clone().unwrap();remote.in_progress=true;remote.execution_state=None;remote.task.activity_log.truncate(1);
     let local=store.snapshot().unwrap().tasks.remove(0);let paused=local.activity_log[1].clone();
     let remote=Change{task_id:task.id.clone(),revision:1,deleted:false,task:Some(remote)};
     store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:sent.mutation_id.clone(),task_id:task.id.clone(),status:"conflict".into(),revision:None,reason:Some("revision_changed".into()),remote:Some(remote),active_task:None}],changes:vec![],cursor:1,has_more:false}).unwrap();

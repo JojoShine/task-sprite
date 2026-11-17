@@ -406,6 +406,6 @@ it("keeps an available update icon immediately to the left of the pin on tasks a
   expect(entry.nextElementSibling).toBe(screen.getByRole("button",{name:"固定任务窗口"}));
   fireEvent.click(screen.getByRole("button",{name:"设置"}));
   expect(screen.getByRole("button",{name:"应用更新"}).parentElement!.nextElementSibling).toBe(screen.getByRole("button",{name:"固定任务窗口"}));
-  expect(screen.getByLabelText("每日集中提醒时间")).toBeTruthy();
-  expect(screen.getByText(/每天集中提醒今天到期和已延期的任务一次/)).toBeTruthy();
+  expect(screen.queryByLabelText("每日集中提醒时间")).toBeNull();
+  expect(screen.queryByText(/每天集中提醒今天到期和已延期的任务一次/)).toBeNull();
 });

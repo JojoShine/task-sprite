@@ -59,7 +59,6 @@ export function Pet({
   const ordered = Object.values(groups).flat();
   const inProgress = ordered.filter(task => taskWorkflow(snapshot, task).state !== "idle");
   const [currentId, setCurrentId] = useState<string | null>(null);
-  const [hovering, setHovering] = useState(false);
   const wheelAt = useRef(0);
   const focus = inProgress.find(task => task.id === currentId) ?? inProgress.find(task => task.id === s.focusId) ?? inProgress[0];
   const activeFocusId = focus?.id ?? null;
@@ -122,10 +121,14 @@ export function Pet({
     }
   }
   useEffect(() => {
-    if (!pinned || s.reduceMotion || hovering || saving || starting || pausing || inProgress.length < 2) return;
-    const timer = setTimeout(() => moveCurrent(1), 10000);
-    return () => clearTimeout(timer);
-  }, [activeFocusId, activeIds, pinned, s.reduceMotion, hovering, saving, starting, pausing]);
+    if (!pinned || saving || starting || pausing || inProgress.length < 2) return;
+    const ids = activeIds.split("|");
+    const timer = setInterval(() => setCurrentId(current => {
+      const index = Math.max(0, ids.indexOf(current ?? s.focusId ?? ids[0]));
+      return ids[(index + 1) % ids.length];
+    }), 10000);
+    return () => clearInterval(timer);
+  }, [activeIds, pinned, saving, starting, pausing, s.focusId]);
   const view = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!view.current || typeof ResizeObserver === "undefined") return;
@@ -174,7 +177,7 @@ export function Pet({
     >
       <div className="pet-card">
       {pinned && focus && (
-        <div className="pet-current" role="group" aria-label="当前任务卡片" onMouseEnter={()=>setHovering(true)} onMouseLeave={()=>setHovering(false)} onWheel={event=>{
+        <div className="pet-current" role="group" aria-label="当前任务卡片" onWheel={event=>{
           const delta=event.deltaY || event.deltaX;
           if (!saving && !starting && !pausing && delta && Date.now()-wheelAt.current>300) { wheelAt.current=Date.now();moveCurrent(delta>0?1:-1); }
         }}>

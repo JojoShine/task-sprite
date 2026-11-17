@@ -59,4 +59,5 @@ export interface Snapshot {
 export interface SyncChange { taskId: string; revision: number; deleted: boolean; task: (Task & { inProgress: boolean }) | null; }
 export interface SyncConflict { mutationId: string; taskId: string; status: string; reason: string | null; remote: SyncChange | null; activeTask: SyncChange | null; }
 export interface SpriteLicenseStatus { accountId: string; codeHint: string; expiresAt: string; deviceLimit: number; devicesUsed: number; }
-export interface SyncStatus { license: SpriteLicenseStatus | null; bound: boolean; accountId: string | null; enabled: boolean; pending: number; conflicts: SyncConflict[]; }
+export interface SyncStatus {
+  deviceName?: string; license: SpriteLicenseStatus | null; bound: boolean; accountId: string | null; enabled: boolean; pending: number; conflicts: SyncConflict[]; }

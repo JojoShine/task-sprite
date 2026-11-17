@@ -29,7 +29,6 @@ pub fn plan(s: &Store, now: DateTime<FixedOffset>) -> Result<Option<Notice>> {
     if !st.notifications || is_quiet(m, minutes(&st.quiet_start), minutes(&st.quiet_end)) {
         return Ok(None);
     }
-    let today = now.date_naive().to_string();
     let todos: Vec<_> = snap.tasks.iter().filter(|t| t.status == "todo").collect();
     let snoozes = s.snoozes()?;
     let snoozed_ids: Vec<_> = snoozes
@@ -37,20 +36,7 @@ pub fn plan(s: &Store, now: DateTime<FixedOffset>) -> Result<Option<Notice>> {
         .filter(|(id, at)| *at <= now && todos.iter().any(|t| &t.id == id))
         .map(|(id, _)| id.clone())
         .collect();
-    let summary_tasks: Vec<_> = if m >= minutes(&st.summary_time) && !s.delivered(&today)? {
-        todos
-            .iter()
-            .filter(|t| t.due_date.as_ref().is_some_and(|d| d <= &today) && !snoozes.iter().any(|(id, at)| id == &t.id && *at > now))
-            .map(|t| t.id.clone())
-            .collect()
-    } else {
-        vec![]
-    };
-    let summary_day = if summary_tasks.is_empty() {
-        None
-    } else {
-        Some(today.clone())
-    };
+    let summary_day = None;
     let mut deadlines = Vec::new();
     for t in &todos {
         if snoozes.iter().any(|(id, at)| id == &t.id && *at > now) { continue; }
@@ -67,9 +53,7 @@ pub fn plan(s: &Store, now: DateTime<FixedOffset>) -> Result<Option<Notice>> {
             }
         }
     }
-    let task_ids: Vec<_> = summary_tasks
-        .into_iter()
-        .chain(snoozed_ids.iter().cloned())
+    let task_ids: Vec<_> = snoozed_ids.iter().cloned()
         .chain(deadlines.iter().map(|(id, _)| id.clone()))
         .collect::<BTreeSet<_>>()
         .into_iter()
