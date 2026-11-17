@@ -119,3 +119,6 @@ impl PanelLifecycle {
     }
 }
 pub fn hide_on_blur(pinned: bool, exporting: bool) -> bool { !pinned && !exporting }
+
+/// Windows has one task surface at a time; a pinned card owns automatic reminders.
+pub fn reminder_uses_card(windows: bool, card_enabled: bool, pet_visible: bool, has_tasks: bool) -> bool { windows && card_enabled && pet_visible && has_tasks }

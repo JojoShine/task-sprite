@@ -123,7 +123,7 @@ export function App() {
       </div>
     );
   return pet ? (
-    <Pet snapshot={snapshot} animation={animation} onSnapshot={setSnapshot} panelVisible={panelVisible} />
+    <Pet snapshot={snapshot} animation={animation} onSnapshot={setSnapshot} panelVisible={panelVisible} reminderIds={reminderIds} />
   ) : (
     <TaskPanel
       snapshot={snapshot}

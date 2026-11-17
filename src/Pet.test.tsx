@@ -566,3 +566,14 @@ it('keeps ten-second rotation running while the cursor stays on a card and snaps
  act(()=>vi.advanceTimersByTime(1000));expect(screen.getByRole('button',{name:'正在做：乙'})).toBeTruthy();
  act(()=>vi.advanceTimersByTime(10000));expect(screen.getByRole('button',{name:'等待进展：丙'})).toBeTruthy();
 })
+
+it('shows Windows cards only while the task window is closed and the card setting is enabled',()=>{
+ const task={id:'win',title:'Windows互斥任务',description:'',priority:'med' as const,status:'todo' as const,dueDate:null,dueTime:null,createdAt:'2026-11-18',updatedAt:'2026-11-18',completedAt:null}
+ const current:Snapshot={...snapshot,platform:'windows',tasks:[task],settings:{...snapshot.settings,cardPinned:true},workflows:{win:{state:'working',steps:[]}}}
+ const {rerender}=render(<Pet snapshot={current} animation={null} onSnapshot={()=>{}} panelVisible={false}/>);
+ expect(screen.getByRole('group',{name:'当前任务卡片'})).toBeTruthy()
+ rerender(<Pet snapshot={current} animation={null} onSnapshot={()=>{}} panelVisible={true}/>);
+ expect(screen.queryByRole('group',{name:'当前任务卡片'})).toBeNull()
+ rerender(<Pet snapshot={{...current,settings:{...current.settings,cardPinned:false}}} animation={null} onSnapshot={()=>{}} panelVisible={false}/>);
+ expect(screen.queryByRole('group',{name:'当前任务卡片'})).toBeNull()
+})

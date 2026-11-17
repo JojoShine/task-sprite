@@ -57,3 +57,13 @@ fn only_unclaimed_reminder_panel_can_auto_close() {
     assert!(!state.should_close(token,false,false));assert!(state.should_close(next,false,false));
     assert!(hide_on_blur(false,false));assert!(!hide_on_blur(true,false));assert!(!hide_on_blur(false,true));
 }
+
+#[test]
+fn windows_card_prevents_automatic_task_window_without_overriding_disabled_cards() {
+    use crate::windows::reminder_uses_card;
+    assert!(reminder_uses_card(true,true,true,true));
+    assert!(!reminder_uses_card(true,false,true,true));
+    assert!(!reminder_uses_card(true,true,false,true));
+    assert!(!reminder_uses_card(true,true,true,false));
+    assert!(!reminder_uses_card(false,true,true,true));
+}

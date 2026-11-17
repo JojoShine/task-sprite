@@ -1408,3 +1408,7 @@ button:not(:disabled):active { opacity: .75; }
 .empty-view .empty { padding:20px 0; }
 .task-row.is-reminded { outline:2px solid #d79a43; outline-offset:-2px; background:color-mix(in srgb,var(--surface) 87%,#d79a43 13%); }
 .reminder-banner { padding:9px 12px; margin:0 0 10px; border-left:3px solid #d79a43; background:#d79a4318; font-size:14px; overflow-wrap:anywhere; }
+
+.pet-reminder-notice { border-left:3px solid #d79a43; padding:7px 10px; background:var(--surface); display:flex; flex-direction:column; gap:4px; max-width:100%; }
+.pet-reminder-notice>span { font-size:12px; color:#d79a43; }
+.pet-reminder-notice>button { border:0; padding:0; text-align:left; background:transparent; color:inherit; font-size:14px; overflow-wrap:anywhere; }

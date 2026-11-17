@@ -228,7 +228,8 @@ pub fn synchronize(app: &tauri::AppHandle) -> Result<SyncStatus> {
     let mut credential = credential;
     let check_license = LICENSE_CHECK.lock().map_err(|_| "授权检查暂不可用")?.as_ref().is_none_or(|(g,a,at)| *g!=generation || *a!=credential.account || at.elapsed()>=Duration::from_secs(300));
     if check_license {
-        let license: LicenseStatus = admitted_request(app,generation,"/licenses/status",&credential,&serde_json::json!({}))?;
+        let installation_id={let state=app.state::<AppState>();let store=state.0.lock().map_err(|_| "数据库暂不可用")?;store.local_identity()?.user_id};
+        let license: LicenseStatus = admitted_request(app,generation,"/licenses/status",&credential,&serde_json::json!({"platform":std::env::consts::OS,"installationId":installation_id}))?;
         if license.account_id != credential.account {return Err("授权工作空间不一致".into());}
         credential.license=Some(license);
         let state=app.state::<AppState>();let store=state.0.lock().map_err(|_| "数据库暂不可用")?;

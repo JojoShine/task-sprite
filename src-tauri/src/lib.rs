@@ -537,6 +537,13 @@ fn show_reminder_panel(app: &tauri::AppHandle) -> Result<()> {
     let visible = panel.is_visible().map_err(|e| e.to_string())?;
     let pinned = panel_pinned(app);
     if visible { return Ok(()); }
+    let use_card={
+        let state=app.state::<AppState>();let store=state.0.lock().map_err(|_| "数据库暂不可用")?;
+        let snapshot=store.snapshot()?;
+        let pet_visible=app.get_webview_window("pet").is_some_and(|pet|pet.is_visible().unwrap_or(false));
+        windows::reminder_uses_card(cfg!(target_os="windows"),snapshot.settings.card_pinned,pet_visible,snapshot.tasks.iter().any(|t|t.status=="todo"))
+    };
+    if use_card { return Ok(()); }
     place_panel(app)?;
     let token = app.state::<Mutex<windows::PanelLifecycle>>().lock()
         .map_err(|_| "窗口状态暂不可用")?.open_reminder(visible, pinned);

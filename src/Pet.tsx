@@ -47,14 +47,17 @@ export function Pet({
   snapshot,
   animation,
   onSnapshot,
+  panelVisible = false,
+  reminderIds = [],
 }: {
   snapshot: Snapshot;
   animation: VisualState | null;
   onSnapshot: (next: Snapshot) => void;
   panelVisible?: boolean;
+  reminderIds?: string[];
 }) {
   const s = snapshot.settings;
-  const pinned = Boolean(s.cardPinned);
+  const pinned = Boolean(s.cardPinned) && !(snapshot.platform === "windows" && panelVisible);
   const groups = groupTasks(snapshot.tasks);
   const ordered = Object.values(groups).flat();
   const inProgress = ordered.filter(task => taskWorkflow(snapshot, task).state !== "idle");
@@ -68,6 +71,7 @@ export function Pet({
   const moveCurrent = (direction: number) => {
     if (inProgress.length > 1) setCurrentId(inProgress[(activeIndex + direction + inProgress.length) % inProgress.length].id);
   };
+  const reminded = ordered.find(task => reminderIds.includes(task.id));
   const overdue = groups.overdue[0];
   const overdueDays = overdue?.dueDate ? daysOverdue(overdue.dueDate) : 0;
   const overdueText = overdue ? `逾期提醒：${overdue.title} · ${overdueDays ? `已逾期${overdueDays}天` : "已过截止时间"}` : "";
@@ -176,6 +180,7 @@ export function Pet({
       }}
     >
       <div className="pet-card">
+      {pinned && reminded && <div className="pet-reminder-notice" role="alert"><span>到期提醒</span><button title={reminded.title} onClick={()=>void api.toggle()}>{reminded.title}</button></div>}
       {pinned && focus && (
         <div className="pet-current" role="group" aria-label="当前任务卡片" onWheel={event=>{
           const delta=event.deltaY || event.deltaX;

@@ -112,6 +112,7 @@ pub struct TaskWorkflow {
 }
 #[derive(Debug, Serialize)]
 pub struct Snapshot {
+    pub platform: &'static str,
     #[serde(rename = "looksExpiresAt")]
     pub looks_expires_at: Option<String>,
     pub tasks: Vec<Task>,
@@ -254,6 +255,7 @@ impl Store {
             });
         }
         Ok(Snapshot {
+            platform: std::env::consts::OS,
             workflows,
             looks_expires_at: self.looks_expires_at()?,
             tasks,
