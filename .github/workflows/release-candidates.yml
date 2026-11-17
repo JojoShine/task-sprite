@@ -8,13 +8,19 @@ on:
         description: Publish all three verified packages and online updates to OSS
         type: boolean
         default: false
+      artifact_run_id:
+        description: Reuse verified packages from this workflow run without rebuilding
+        type: string
+        default: ''
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: task-sprite-release
   cancel-in-progress: false
 jobs:
   candidates:
+    if: ${{ !inputs.artifact_run_id }}
     strategy:
       fail-fast: false
       matrix:
@@ -104,15 +110,30 @@ jobs:
           path: ci-logs/
   publish:
     needs: candidates
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+    if: always() && !cancelled() && (startsWith(github.ref, 'refs/tags/v') || inputs.publish) && (needs.candidates.result == 'success' || inputs.artifact_run_id != '')
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve original verified source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.artifact_run_id }}
+        run: |
+          if [ -z "$SOURCE_RUN_ID" ]; then
+            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          else
+            [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || exit 1
+            source_sha="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq '.head_sha')"
+            echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
       - name: Reuse the website OSS publisher
         uses: actions/checkout@v4
         with:
           repository: JojoShine/task-sprite-site
-          ref: dbbdc3c7955a30b61494aea6b7c7b553c09e46b7
+          ref: 8f8701e24c48194b5b3f15236057750f8b6d6ec5
           path: release-site
       - uses: actions/setup-node@v4
         with:
@@ -121,6 +142,8 @@ jobs:
           cache-dependency-path: release-site/package-lock.json
       - uses: actions/download-artifact@v4
         with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
           pattern: release-packages-*
           merge-multiple: true
           path: release-packages
