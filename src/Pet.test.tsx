@@ -577,3 +577,20 @@ it('shows Windows cards only while the task window is closed and the card settin
  rerender(<Pet snapshot={{...current,settings:{...current.settings,cardPinned:false}}} animation={null} onSnapshot={()=>{}} panelVisible={false}/>);
  expect(screen.queryByRole('group',{name:'当前任务卡片'})).toBeNull()
 })
+
+it('keeps drag failures out of the desktop overlay and allows another drag',async()=>{
+ vi.stubGlobal('PointerEvent',MouseEvent);
+ vi.spyOn(console,'warn').mockImplementation(()=>{});
+ vi.mocked(api.movePet).mockClear();vi.mocked(api.movePet).mockRejectedValueOnce(new Error('Move failed'));
+ render(<Pet snapshot={snapshot} animation={null} onSnapshot={()=>{}}/>);
+ const pet=screen.getByRole('button',{name:'点击打开任务面板，拖动可移动精灵'});
+ pet.setPointerCapture=vi.fn();pet.releasePointerCapture=vi.fn();
+ fireEvent.pointerDown(pet,{button:0,screenX:100,screenY:100});
+ await act(async()=>{fireEvent.pointerMove(pet,{buttons:1,screenX:140,screenY:110});});
+ expect(screen.queryByText('可从菜单栏找回窗口')).toBeNull();
+ fireEvent.pointerDown(pet,{button:0,screenX:100,screenY:100});
+ await act(async()=>{fireEvent.pointerMove(pet,{buttons:1,screenX:150,screenY:120});fireEvent.pointerUp(pet,{button:0,screenX:150,screenY:120});});
+ expect(api.movePet).toHaveBeenCalledWith({x:50,y:20});
+ expect(api.toggle).not.toHaveBeenCalled();
+ vi.unstubAllGlobals();
+});

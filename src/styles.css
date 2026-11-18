@@ -563,11 +563,6 @@ h3 {
   color: var(--red);
   font-weight: 500;
 }
-.drag-error {
-  position: absolute;
-  bottom: 0;
-  font-size: 13px;
-}
 .editor,
 .settings {
   display: flex;

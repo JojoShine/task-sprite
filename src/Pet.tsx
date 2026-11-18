@@ -76,7 +76,6 @@ export function Pet({
   const overdueDays = overdue?.dueDate ? daysOverdue(overdue.dueDate) : 0;
   const overdueText = overdue ? `逾期提醒：${overdue.title} · ${overdueDays ? `已逾期${overdueDays}天` : "已过截止时间"}` : "";
   const drag = useRef<ReturnType<typeof createDragSession> | null>(null);
-  const [dragError, setDragError] = useState("");
   const updating = useRef(false);
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -145,7 +144,7 @@ export function Pet({
       previous = height;
       queue = queue.then(async () => {
         if (!cancelled) await api.resizePet(height);
-      }).catch(e => { if (!cancelled) setDragError(message(e)); });
+      }).catch(e => { if (!cancelled) console.warn("桌宠窗口尺寸调整失败", e); });
     };
     const observer = new ResizeObserver(resize);
     observer.observe(view.current);
@@ -251,13 +250,13 @@ export function Pet({
           if (drag.current && e.buttons === 1)
             void drag.current
               .update({ x: e.screenX, y: e.screenY })
-              .catch((e) => setDragError(String(e)));
+              .catch((error) => console.warn("桌宠拖动失败", error));
         }}
         onPointerUp={(e) => {
           if (drag.current)
             void drag.current
               .update({ x: e.screenX, y: e.screenY })
-              .catch((e) => setDragError(String(e)));
+              .catch((error) => console.warn("桌宠拖动失败", error));
           e.currentTarget.releasePointerCapture(e.pointerId);
         }}
         onClick={(e) => {
@@ -285,7 +284,6 @@ export function Pet({
         <span>待办 <strong>{ordered.length}</strong></span><span>延期 <b>{groups.overdue.length}</b></span>
         <span>正在做 <strong>{workingCount + waitingCount}</strong></span>
       </span>
-      {dragError && <span className="drag-error">可从菜单栏找回窗口</span>}
     </div>
   );
 }
