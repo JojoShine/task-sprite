@@ -126,7 +126,7 @@ jobs:
   publish:
     needs: candidates
     if: always() && !cancelled() && (startsWith(github.ref, 'refs/tags/v') || inputs.publish) && (needs.candidates.result == 'success' || inputs.artifact_run_id != '')
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     steps:
       - name: Resolve original verified source
         id: source
