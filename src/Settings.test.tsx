@@ -2,7 +2,7 @@ import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { Settings } from "./Settings";
 import { api } from "./api";
-vi.mock("./api", () => ({ api: { syncStatus: vi.fn(async () => ({bound:false, accountId:null,enabled:false,pending:0,conflicts:[],license:null})), preferences: vi.fn(), exportTasks: vi.fn() }, message: String }));
+vi.mock("./api", () => ({ api: { syncStatus: vi.fn(async () => ({bound:false, accountId:null,enabled:false,pending:0,conflicts:[],license:null})), preferences: vi.fn(), exportTasks: vi.fn(), autostartEnabled: vi.fn(async () => false), setAutostart: vi.fn(async (enabled: boolean) => enabled) }, message: String }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it("exports all tasks through a save dialog and reports completion or cancellation", async () => {
   let complete!: (path: string | null) => void;
@@ -57,4 +57,20 @@ it('keeps the card-pin setting independent from task-window pinning',()=>{
  expect((screen.getByRole('checkbox',{name:'固定任务卡'}) as HTMLInputElement).checked).toBe(false);
  rerender(<Settings settings={{...preferences,cardPinned:true,panelPinned:false}} onClose={vi.fn()} onChange={vi.fn()}/>);
  expect((screen.getByRole('checkbox',{name:'固定任务卡'}) as HTMLInputElement).checked).toBe(true);
+});
+
+it("reads the system login setting and only enables it after the user toggles it", async () => {
+  const update = vi.fn();
+  render(<Settings settings={preferences} onClose={vi.fn()} onChange={update}/>);
+  const startup = screen.getByRole<HTMLInputElement>("checkbox", {name: "开机启动"});
+  await waitFor(() => expect(startup.disabled).toBe(false));
+  expect(startup.checked).toBe(false);
+  expect(api.setAutostart).not.toHaveBeenCalled();
+  fireEvent.click(startup);
+  await waitFor(() => expect(startup.checked).toBe(true));
+  expect(api.setAutostart).toHaveBeenLastCalledWith(true);
+  fireEvent.click(startup);
+  await waitFor(() => expect(startup.checked).toBe(false));
+  expect(api.setAutostart).toHaveBeenLastCalledWith(false);
+  expect(update).not.toHaveBeenCalled();
 });

@@ -1115,6 +1115,9 @@ button:not(:disabled):active { opacity: .75; }
 .empty > .sprite { width: 92px; height: 118px; }
 .empty h2 { font-size: 19px; }
 .empty p { font-size: 14px; color: var(--muted); margin-top: 8px; }
+.settings-update { display: grid; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.settings-update > p { margin: 0; }
+.update-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .identity-card { padding: 14px; background: var(--surface); border-radius: 9px; }
 .identity-heading { display: flex; align-items: center; gap: 6px; color: var(--green); }
 .identity-heading strong { font-size: 15px; font-weight: 600; }

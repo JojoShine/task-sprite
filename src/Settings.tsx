@@ -4,18 +4,55 @@ import type { Settings as Preferences, Snapshot } from "./types";
 import { api, message } from "./api";
 import { CompanionSettings } from "./CompanionSettings";
 import { SyncSettings } from "./SyncSettings";
+import { UpdateControls, type AppUpdater } from "./UpdateSettings";
+
+function StartupSetting() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => { void read(); }, []);
+
+  async function read() {
+    setBusy(true);
+    setError("");
+    try { setEnabled(await api.autostartEnabled()); }
+    catch { setError("无法读取开机启动设置。"); }
+    finally { setBusy(false); }
+  }
+
+  async function toggle(value: boolean) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try { setEnabled(await api.setAutostart(value)); }
+    catch { setError("无法修改开机启动设置，请在系统登录项中查看。"); }
+    finally { setBusy(false); }
+  }
+
+  return <>
+    <label className="toggle">开机启动
+      <input type="checkbox" checked={enabled ?? false} disabled={enabled === null || busy} onChange={e => void toggle(e.target.checked)}/>
+    </label>
+    <p className="micro">登录系统后自动显示桌宠。</p>
+    {error && <p className="error" role="alert">{error}</p>}
+    {enabled === null && !busy && <button type="button" className="secondary" onClick={() => void read()}>重新读取</button>}
+  </>;
+}
 export function Settings({
   settings,
   onClose,
   onChange,
   onWardrobe,
   section,
+  updater,
 }: {
   settings: Preferences;
   onClose: () => void;
   onChange: (next: Snapshot) => void;
   onWardrobe?: () => void;
   section?: "reminders";
+  updater?: AppUpdater;
 }) {
   const reminders = useRef<HTMLElement>(null);
   useEffect(() => { if(section === "reminders") reminders.current?.scrollIntoView?.({block:"start"}); }, [section]);
@@ -62,6 +99,14 @@ export function Settings({
           <ArrowLeft size={16} />返回
         </button>
       </div>
+      <section className="window-settings" aria-label="应用">
+        <h3>应用</h3>
+        <StartupSetting/>
+        {updater && <div className="settings-update">
+          {updater.update && <p className="micro">当前版本 v{updater.update.currentVersion}</p>}
+          <UpdateControls updater={updater}/>
+        </div>}
+      </section>
       <section className="reminder-settings" aria-label="任务提醒" ref={reminders}>
         <h3>任务提醒</h3>
         <p className="micro">到期前2小时开始提醒，之后每30分钟一次。自动弹窗20秒后收起，正在编辑时保留。</p>

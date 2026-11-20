@@ -3,6 +3,11 @@ import { emit } from "@tauri-apps/api/event";
 import type { Snapshot, TaskInput, Settings, VisualState, SyncStatus } from "./types";
 export const api = {
   checkUpdate: () => invoke<{ currentVersion: string; version: string | null; notes: string | null }>("check_update"),
+  autostartEnabled: () => invoke<boolean>("plugin:autostart|is_enabled"),
+  setAutostart: async (enabled: boolean) => {
+    await invoke<void>(enabled ? "plugin:autostart|enable" : "plugin:autostart|disable");
+    return invoke<boolean>("plugin:autostart|is_enabled");
+  },
   installUpdate: (version: string) => invoke<void>("install_update", { version }),
   preview: (state: VisualState) => emit("preview-animation", state),
   petPosition: () =>

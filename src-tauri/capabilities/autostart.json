@@ -1,0 +1,6 @@
+{
+  "identifier": "panel-autostart",
+  "description": "Manage login startup from the desktop settings panel",
+  "windows": ["panel"],
+  "permissions": ["autostart:default"]
+}

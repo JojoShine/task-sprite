@@ -133,7 +133,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: JojoShine/task-sprite-site
-          ref: 0558c5cbc7b22b9208f6b859e942caa5f4ed0719
+          ref: f3c7722aa18c08f6a44bc5463f25df2b83917b1c
           path: release-site
       - uses: actions/setup-node@v4
         with:

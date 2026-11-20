@@ -23,7 +23,7 @@ import { renderedPet } from "./looks";
 import { Sprite } from "./Pet";
 import { TaskEditor } from "./TaskEditor";
 import { Settings } from "./Settings";
-import { UpdateSettings } from "./UpdateSettings";
+import { UpdateSettings, useAppUpdate } from "./UpdateSettings";
 import { Wardrobe } from "./Wardrobe";
 import { taskWorkflow } from "./workflow";
 import { isTaskPaused } from "./taskTiming";
@@ -43,6 +43,7 @@ export function TaskPanel({
   reminderIds?: string[];
 }) {
   const [view, setView] = useState<"tasks" | "settings" | "editor" | "wardrobe">("tasks");
+  const updater = useAppUpdate();
   const [editing, setEditing] = useState<Task>();
   const [filter, setFilter] = useState<"todo" | "progress" | "completed">("todo");
   const completed = filter === "completed";
@@ -284,7 +285,7 @@ export function TaskPanel({
             <div><b>Task Sprite</b><small>你的桌面任务伙伴</small></div>
           </div>
           <div className="window-actions">
-            <UpdateSettings />
+            <UpdateSettings updater={updater} />
             <button className="pin-button" aria-label={snapshot.settings.panelPinned ? "取消窗口固定" : "固定任务窗口"} title={snapshot.settings.panelPinned ? "取消窗口固定，点击外部收起" : "保持任务窗口打开"} aria-pressed={!!snapshot.settings.panelPinned} disabled={pinBusy} onClick={()=>void togglePin()}><PushPin size={21} weight={snapshot.settings.panelPinned ? "fill" : "regular"}/></button>
             <button
               className="settings-button"
@@ -316,6 +317,7 @@ export function TaskPanel({
           ) : view === "settings" ? (
             <Settings
               settings={snapshot.settings}
+              updater={updater}
               onWardrobe={() => setView("wardrobe")}
               onClose={() => setView("tasks")}
               onChange={onSnapshot}
