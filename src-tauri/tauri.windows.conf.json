@@ -8,7 +8,7 @@
         "installMode": "currentUser"
       },
       "webviewInstallMode": {
-        "type": "offlineInstaller"
+        "type": "downloadBootstrapper"
       }
     }
   }

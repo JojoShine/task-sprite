@@ -1,4 +1,4 @@
-param([string]$Executable = "src-tauri/target/release/task-sprite.exe", [string]$Installer = "", [switch]$DebugWebview)
+param([string]$Executable = "src-tauri/target/release/task-sprite.exe", [string]$Installer = "", [switch]$DebugWebview, [string]$InstallDirectoryName = "task-sprite-installed")
 $ErrorActionPreference = "Stop"
 New-Item -ItemType Directory -Force ci-logs | Out-Null
 Add-Type @'
@@ -24,7 +24,7 @@ public static class SmokeWindows {
 }
 '@
 if ($Installer) {
-    $destination = Join-Path $env:RUNNER_TEMP "task-sprite-installed"
+    $destination = Join-Path $env:RUNNER_TEMP $InstallDirectoryName
     # NSIS requires /D as the final argument; this destination has no quoting ambiguity.
     $install = Start-Process -FilePath (Resolve-Path $Installer) -ArgumentList @("/S", "/D=$destination") -PassThru -Wait
     if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }

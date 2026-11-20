@@ -6,12 +6,14 @@ const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
 const smoke = JSON.parse(readFileSync('ci-logs/startup.json'));
 if (smoke.startup !== 'passed' || (platform === 'windows' && smoke.mode !== 'installed-release')) throw Error('Platform smoke check failed');
 mkdirSync('release-packages',{recursive:true});
+const offline = platform === 'windows' && process.argv.includes('--offline');
+const suffix = offline ? '-offline' : '';
 if (platform === 'windows') {
   const directory = 'src-tauri/target/release/bundle/nsis';
   const files = readdirSync(directory).filter(file=>file.endsWith('.exe'));
   if (files.length !== 1) throw Error('Expected exactly one Windows installer');
-  const target = `release-packages/Task-Sprite-${version}-windows-x86_64.exe`;
+  const target = `release-packages/Task-Sprite-${version}-windows-x86_64${suffix}.exe`;
   copyFileSync(path.join(directory,files[0]),target);
-  copyFileSync(path.join(directory,files[0]+'.sig'),target+'.sig');
+  if (!offline) copyFileSync(path.join(directory,files[0]+'.sig'),target+'.sig');
 }
-writeFileSync(`release-packages/${platform}-${arch}-verified.json`,JSON.stringify({version,startup:smoke.startup,platform,arch},null,2)+'\n');
+writeFileSync(`release-packages/${platform}-${arch}${suffix}-verified.json`,JSON.stringify({version,startup:smoke.startup,platform,arch},null,2)+'\n');
