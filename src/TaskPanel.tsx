@@ -90,6 +90,17 @@ export function TaskPanel({
       requestedHeight.current = next;
       if (api.resizePanel) void api.resizePanel(next).catch(() => { requestedHeight.current = 0; });
     };
+    if (view === "editor" && !editing) {
+      const editor=shell.current?.querySelector<HTMLElement>('.editor');
+      const area=shell.current?.querySelector<HTMLElement>('.panel-content');
+      if(!editor||!area||typeof ResizeObserver==="undefined")return;
+      const measure=()=>{
+        const padding=getComputedStyle(area);
+        resize(window.innerHeight-area.clientHeight+editor.scrollHeight+parseFloat(padding.paddingTop)+parseFloat(padding.paddingBottom));
+      };
+      const observer=new ResizeObserver(measure);observer.observe(editor);measure();
+      return ()=>observer.disconnect();
+    }
     if (view !== "tasks") { resize(heightLimit); return; }
     const area = taskPage.current;
     if (!area || typeof ResizeObserver === "undefined") return;
@@ -117,7 +128,7 @@ export function TaskPanel({
     area.querySelectorAll<HTMLElement>(".task-row, .empty, .empty-small").forEach(node => observer.observe(node));
     measure();
     return () => observer.disconnect();
-  }, [view, filter, snapshot, pageSize, pageIndex, heightLimit, snoozing, toast, error, notificationWarning]);
+  }, [view, editing, filter, snapshot, pageSize, pageIndex, heightLimit, snoozing, toast, error, notificationWarning]);
   const turnPage = (index: number) => { setPageSelection({ key: pageKey, index }); setSnoozing(null); };
   const date = new Date();
   const dayText = `${date.getMonth() + 1}月${date.getDate()}日 ${["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()]}`;
@@ -288,7 +299,7 @@ export function TaskPanel({
           </div>
         </header>
         {pinError && <p className="pin-error" role="alert">{pinError}</p>}
-        <div className={`panel-content ${view === "editor" ? "editor-view" : ""} ${view === "tasks" && listed.length === 0 ? "empty-view" : view === "tasks" ? "paged-view" : ""} ${notificationWarning ? "has-notice" : ""}`}>
+        <div className={`panel-content ${view === "editor" && !editing ? "editor-view" : ""} ${view === "tasks" && listed.length === 0 ? "empty-view" : view === "tasks" ? "paged-view" : ""} ${notificationWarning ? "has-notice" : ""}`}>
           {view === "wardrobe" ? <Wardrobe looksExpiresAt={snapshot.looksExpiresAt} onActivate={() => setView("settings")} settings={snapshot.settings} onChange={onSnapshot} onClose={() => setView("settings")} /> : view === "editor" ? (
             <TaskEditor
               key={editing?.id ?? "new"}
@@ -311,7 +322,7 @@ export function TaskPanel({
             />
           ) : (
             <div className="task-home">
-              {reminderIds.some(id=>todos.some(t=>t.id===id)) && <p className="reminder-banner" role="status">到期提醒：{todos.filter(t=>reminderIds.includes(t.id)).map(t=>t.title).join("、")}</p>}
+              {reminderIds.some(id=>todos.some(t=>t.id===id)) && <p className={`reminder-banner ${todos.some(t=>reminderIds.includes(t.id)&&isTaskOverdue(t))?"is-overdue":""}`} role="status">{todos.filter(t=>reminderIds.includes(t.id)).map(t=>`${isTaskOverdue(t)?"延期提醒":"到期提醒"}：${t.title}`).join("、")}</p>}
               <div className="date-line">
                 {dayText}
                 <span className="local-badge">

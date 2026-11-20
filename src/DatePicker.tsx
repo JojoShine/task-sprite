@@ -29,7 +29,7 @@ export function DatePicker({ value, time, onChange, onClose, onSave, saving = fa
         <h2>安排到什么时候？</h2>
         <button type="button" className="text-button icon-text" aria-label="返回任务编辑" onClick={onClose}><ArrowLeft size={16} />返回</button>
       </div>
-      <p className="deadline-help">默认下午 17:00；可先切换上午，点一天即可完成。</p>
+      <p className="deadline-help">默认下午 17:00，点击日期或时段即可填入并返回。</p>
       <div className="deadline-days" role="group" aria-label="未来一周">
         {days.map((d, i) => (
           <button type="button" key={d.date} ref={i === 0 ? first : undefined}
@@ -42,7 +42,7 @@ export function DatePicker({ value, time, onChange, onClose, onSave, saving = fa
       <div className="deadline-periods" role="group" aria-label="截止时段">
         {([{ time: "12:00", label: "上午", Icon: SunHorizon }, { time: "17:00", label: "下午", Icon: Sun }] as const).map(({ time: t, label, Icon }) => (
           <button type="button" key={t} aria-label={`${label} ${t} 截止`}
-            aria-pressed={period === t} onClick={() => setPeriod(t)}>
+            aria-pressed={period === t} onClick={() => { setPeriod(t); onChange(selected.date, selected.times.includes(t) ? t : selected.times[0]); }}>
             <Icon size={25} /><strong>{label}</strong><small>{t} 截止</small>
           </button>
         ))}

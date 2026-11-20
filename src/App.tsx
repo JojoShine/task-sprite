@@ -10,6 +10,16 @@ export function App() {
   useTheme(snapshot?.settings.theme, snapshot?.settings.skin, snapshot?.looksExpiresAt);
   const [error, setError] = useState("");
   const [reminderIds, setReminderIds] = useState<string[]>([]);
+  const latestSnapshot = useRef<Snapshot | undefined>(undefined);
+  latestSnapshot.current = snapshot;
+  const reminderDeadlines = useRef<Record<string,string>>({});
+  useEffect(()=>{
+    if(!snapshot)return;
+    setReminderIds(ids=>{
+      const valid=ids.filter(id=>snapshot.tasks.some(t=>t.id===id && t.status==='todo' && `${t.dueDate}|${t.dueTime}`===reminderDeadlines.current[id]));
+      return valid.length===ids.length?ids:valid;
+    });
+  },[snapshot]);
   const [panelVisible, setPanelVisible] = useState(false);
   const [animation, setAnimation] = useState<VisualState | null>(null);
   const animationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -40,7 +50,11 @@ export function App() {
           },
         ],
         ["snapshot", (s: Snapshot) => setSnapshot(s)],
-        ["reminder-tasks", (ids: string[]) => setReminderIds(ids)],
+        ["reminder-tasks", (ids: string[]) => {
+          const tasks=latestSnapshot.current?.tasks||[];
+          reminderDeadlines.current=Object.fromEntries(tasks.filter(t=>ids.includes(t.id)).map(t=>[t.id,`${t.dueDate}|${t.dueTime}`]));
+          setReminderIds(ids);
+        }],
         ["panel-visibility", (visible: boolean) => { visibilityVersion++; setPanelVisible(visible); }],
         ["clock", () => setClock((c) => c + 1)],
         ["sync-status", () => { void refresh().catch(() => {}); }],

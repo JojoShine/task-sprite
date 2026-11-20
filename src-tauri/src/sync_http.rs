@@ -205,6 +205,20 @@ pub fn pause(app: &tauri::AppHandle) -> Result<SyncStatus> {
     { let state = app.state::<AppState>(); let store = state.0.lock().map_err(|_| "数据库暂不可用")?; store.sync_disable()?; }
     status(app)
 }
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncEnvelope {
+    #[serde(flatten)]
+    tasks: SyncResponse,
+    pet_image: Option<CloudPetImage>,
+}
+
+#[derive(serde::Deserialize)]
+struct CloudPetImage {
+    id: String,
+    png: String,
+}
+
 pub fn synchronize(app: &tauri::AppHandle) -> Result<SyncStatus> {
     let generation = GENERATION.load(Ordering::Acquire);
     let runtime = app.state::<SyncRuntime>();
@@ -247,18 +261,21 @@ pub fn synchronize(app: &tauri::AppHandle) -> Result<SyncStatus> {
                 None => { drop(store); return status(app); }
             }
         };
-        let payload=serde_json::to_string(&request_body.mutations.iter().map(|m|(&m.task_id,m.deleted,&m.task)).collect::<Vec<_>>()).map_err(|e|e.to_string())?;
+        let payload=serde_json::to_string(&request_body.mutations.iter().map(|m|(&m.mutation_id,&m.task_id,m.deleted)).collect::<Vec<_>>()).map_err(|e|e.to_string())?;
         if !request_body.mutations.is_empty() && last_payload.as_ref()==Some(&payload) {return Err("同步内容没有变化，已暂停重复上传，稍后自动重试".into());}
         last_payload=Some(payload);
-        let response: SyncResponse = admitted_request(app, generation, "/sync", &credential, &request_body)?;
-        let more = response.has_more;
+        let response: SyncEnvelope = admitted_request(app, generation, "/sync", &credential, &request_body)?;
+        let more = response.tasks.has_more;
         {
             let state = app.state::<AppState>();
             let mut store = state.0.lock().map_err(|_| "数据库暂不可用")?;
             if GENERATION.load(Ordering::Acquire) != generation || !store.sync_status()?.enabled || store.sync_status()?.account_id != initial.account_id {
                 return store.sync_status();
             }
-            store.sync_apply(response)?;
+            if let Some(image) = response.pet_image {
+                store.sync_cache_pet(&image.id, &image.png)?;
+            }
+            store.sync_apply(response.tasks)?;
             let snapshot = store.snapshot()?;
             let _ = app.emit("snapshot", &snapshot);
         }

@@ -730,7 +730,7 @@ fn sync_queue_survives_restart_and_keeps_edits_made_during_upload() {
     assert!(store.sync_request().unwrap().mutations[0].deleted);
 }
 #[test]
-fn synced_deletion_preserves_local_preferences_and_conflicts_require_a_choice() {
+fn legacy_rejection_retries_local_edit_and_synced_deletion_preserves_preferences() {
     use crate::sync_store::*;
     let mut store = Store::memory().unwrap();
     store.sync_link("account-one").unwrap();store.sync_enable().unwrap();
@@ -740,8 +740,12 @@ fn synced_deletion_preserves_local_preferences_and_conflicts_require_a_choice() 
     let remote = Change { task_id: task.id.clone(), revision: 2, deleted: true, task: None };
     store.sync_apply(SyncResponse { results: vec![MutationResult { mutation_id: request.mutations[0].mutation_id.clone(), task_id: task.id.clone(), status: "conflict".into(), revision: None, reason: Some("revision_changed".into()), remote: Some(remote.clone()), active_task: None }], changes: vec![remote], cursor: 2, has_more: false }).unwrap();
     assert_eq!(store.snapshot().unwrap().tasks.len(), 1);
-    assert!(store.sync_request().unwrap().mutations.is_empty());
-    store.sync_resolve(&task.id, false).unwrap();
+    let retry = store.sync_request().unwrap().mutations.remove(0);
+    assert_ne!(retry.mutation_id, request.mutations[0].mutation_id);
+    assert_eq!(retry.base_revision, 2);
+    assert!(store.sync_status().unwrap().conflicts.is_empty());
+    let deleted = Change { task_id: task.id.clone(), revision: 4, deleted: true, task: None };
+    store.sync_apply(SyncResponse { results: vec![MutationResult { mutation_id: retry.mutation_id, task_id: task.id.clone(), status: "accepted".into(), revision: Some(3), reason: None, remote: None, active_task: None }], changes: vec![deleted], cursor: 4, has_more: false }).unwrap();
     let snapshot = store.snapshot().unwrap();
     assert!(snapshot.tasks.is_empty());assert!(snapshot.settings.focus_id.is_none());
     assert_eq!(snapshot.settings.pet, "robot");
@@ -757,7 +761,7 @@ fn first_sync_creates_a_readable_backup_before_merging_existing_tasks() {
     assert_eq!(connection.query_row("SELECT title FROM tasks",[],|row|row.get::<_,String>(0)).unwrap(),"keep me");
 }
 #[test]
-fn conflict_choice_uses_the_latest_downloaded_cloud_version() {
+fn unacknowledged_edit_survives_downloads_then_newer_cloud_revision_wins() {
     use crate::sync_store::*;
     let mut store=Store::memory().unwrap();store.sync_link("a").unwrap();store.sync_enable().unwrap();
     let task=store.save_task(input("local",None)).unwrap();let sent=store.sync_request().unwrap();
@@ -766,7 +770,11 @@ fn conflict_choice_uses_the_latest_downloaded_cloud_version() {
     store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:sent.mutations[0].mutation_id.clone(),task_id:task.id.clone(),status:"conflict".into(),revision:None,reason:Some("revision_changed".into()),remote:Some(remote.clone()),active_task:None}],changes:vec![remote],cursor:1,has_more:false}).unwrap();
     remote_task.title="cloud v2".into();
     store.sync_apply(SyncResponse{results:vec![],changes:vec![Change{task_id:task.id.clone(),revision:2,deleted:false,task:Some(SyncTask{task:remote_task,in_progress:false,execution_state:None,follow_ups:None})}],cursor:2,has_more:false}).unwrap();
-    store.sync_resolve(&task.id,false).unwrap();assert_eq!(store.snapshot().unwrap().tasks[0].title,"cloud v2");
+    assert_eq!(store.snapshot().unwrap().tasks[0].title,"local");
+    let sent=store.sync_request().unwrap().mutations.remove(0);
+    let mut newest=sent.task.unwrap(); newest.task.title="cloud v3".into();
+    store.sync_apply(SyncResponse { results: vec![MutationResult { mutation_id: sent.mutation_id, task_id: task.id.clone(), status: "accepted".into(), revision: Some(3), reason: None, remote: None, active_task: None }], changes: vec![Change { task_id: task.id, revision: 4, deleted: false, task: Some(newest) }], cursor: 4, has_more: false }).unwrap();
+    assert_eq!(store.snapshot().unwrap().tasks[0].title,"cloud v3");
 }
 #[test]
 fn active_conflict_keeps_a_new_offline_task_in_the_queue() {
@@ -776,8 +784,10 @@ fn active_conflict_keeps_a_new_offline_task_in_the_queue() {
     let mut active=task.clone();active.id="cloud-active".into();active.title="cloud work".into();
     let active=Change{task_id:active.id.clone(),revision:1,deleted:false,task:Some(SyncTask{task:active,in_progress:true,execution_state:None,follow_ups:None})};
     store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:sent.mutations[0].mutation_id.clone(),task_id:task.id.clone(),status:"conflict".into(),revision:None,reason:Some("another_task_in_progress".into()),remote:Some(Change{task_id:task.id.clone(),revision:0,deleted:true,task:None}),active_task:Some(active.clone())}],changes:vec![active],cursor:1,has_more:false}).unwrap();
-    store.sync_resolve(&task.id,false).unwrap();
-    let snapshot=store.snapshot().unwrap();assert!(snapshot.tasks.iter().any(|t|t.title=="offline work"));assert_eq!(snapshot.settings.focus_id.as_deref(),Some("cloud-active"));
+    let snapshot=store.snapshot().unwrap();
+    assert!(snapshot.tasks.iter().any(|t|t.title=="offline work"));
+    assert_eq!(snapshot.workflows[&task.id].state,"working");
+    assert_eq!(snapshot.workflows["cloud-active"].state,"working");
     let request=store.sync_request().unwrap();let pending=request.mutations.iter().find(|m|m.task_id==task.id).unwrap();assert!(!pending.deleted);assert!(pending.task.as_ref().unwrap().in_progress);
 }
 #[test]
@@ -1052,15 +1062,13 @@ fn accepting_remote_paused_state_preserves_parallel_local_active_history() {
     // authoritative paused task. Local-only history must remain visible.
     let change=Change{task_id:task.id.clone(),revision:1,deleted:false,task:Some(remote)};
     store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:request.mutations[0].mutation_id.clone(),task_id:task.id.clone(),status:"accepted".into(),revision:Some(1),reason:None,remote:None,active_task:None}],changes:vec![change],cursor:1,has_more:false}).unwrap();
-    // Pending local edits intentionally block automatic downloads; choosing the
-    // remote side of a later conflict exercises the merge itself.
+    // A newer remote revision arrives when the pending local history is accepted.
     let request=store.sync_request().unwrap();let sent=request.mutations.iter().find(|m|m.task_id==task.id).unwrap();
     let mut authoritative=sent.task.clone().unwrap();authoritative.in_progress=false;authoritative.execution_state=None;
     authoritative.task.activity_log.retain(|e|e.id!=local.id);
     authoritative.task.activity_log.push(crate::store::ActivityEvent::new("paused",&chrono::Utc::now().to_rfc3339()));
     let remote=Change{task_id:task.id.clone(),revision:2,deleted:false,task:Some(authoritative)};
-    store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:sent.mutation_id.clone(),task_id:task.id.clone(),status:"conflict".into(),revision:None,reason:Some("revision_changed".into()),remote:Some(remote),active_task:None}],changes:vec![],cursor:2,has_more:false}).unwrap();
-    store.sync_resolve(&task.id,false).unwrap();
+    store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:sent.mutation_id.clone(),task_id:task.id.clone(),status:"accepted".into(),revision:Some(1),reason:None,remote:None,active_task:None}],changes:vec![remote],cursor:2,has_more:false}).unwrap();
     let snapshot=store.snapshot().unwrap();let saved=&snapshot.tasks[0];
     assert!(saved.activity_log.iter().any(|e|e.id==local.id));
     assert_eq!(saved.activity_log.last().unwrap().action,"resumed");
@@ -1069,7 +1077,7 @@ fn accepting_remote_paused_state_preserves_parallel_local_active_history() {
 }
 
 #[test]
-fn selecting_remote_active_state_resumes_after_retained_local_pause() {
+fn downloaded_remote_active_state_resumes_after_retained_local_pause() {
     use crate::sync_store::*;
     let mut store=Store::memory().unwrap();store.sync_link("a").unwrap();store.sync_enable().unwrap();
     let task=store.save_task(input("remote active",None)).unwrap();
@@ -1078,8 +1086,9 @@ fn selecting_remote_active_state_resumes_after_retained_local_pause() {
     let mut remote=sent.task.clone().unwrap();remote.in_progress=true;remote.execution_state=None;remote.task.activity_log.truncate(1);
     let local=store.snapshot().unwrap().tasks.remove(0);let paused=local.activity_log[1].clone();
     let remote=Change{task_id:task.id.clone(),revision:1,deleted:false,task:Some(remote)};
-    store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:sent.mutation_id.clone(),task_id:task.id.clone(),status:"conflict".into(),revision:None,reason:Some("revision_changed".into()),remote:Some(remote),active_task:None}],changes:vec![],cursor:1,has_more:false}).unwrap();
-    let before=chrono::Utc::now();store.sync_resolve(&task.id,false).unwrap();let after=chrono::Utc::now();
+    let before=chrono::Utc::now();
+    store.sync_apply(SyncResponse{results:vec![MutationResult{mutation_id:sent.mutation_id.clone(),task_id:task.id.clone(),status:"accepted".into(),revision:Some(1),reason:None,remote:None,active_task:None}],changes:vec![remote],cursor:1,has_more:false}).unwrap();
+    let after=chrono::Utc::now();
     let snapshot=store.snapshot().unwrap();let saved=&snapshot.tasks[0];
     assert_eq!(snapshot.settings.focus_id.as_deref(),Some(task.id.as_str()));
     assert_eq!(saved.started_at,local.started_at);

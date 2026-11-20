@@ -3,11 +3,11 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { DatePicker } from "./DatePicker";
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 10, 16, 9)); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
-it("switches to morning before committing a day in one click", () => {
+it("commits the selected day immediately when clicking morning", () => {
   const change = vi.fn();
   render(<DatePicker value="" time={null} onChange={change} onClose={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: "上午 12:00 截止" }));
-  expect(change).not.toHaveBeenCalled();
+  expect(change).toHaveBeenCalledWith("2026-11-16", "12:00");
   fireEvent.click(screen.getByRole("button", { name: "2026年11月23日" }));
   expect(change).toHaveBeenCalledWith("2026-11-23", "12:00");
 });
@@ -29,7 +29,6 @@ it("preserves a legacy date until explicitly selecting or clearing", () => {
 it("Escape cancels a pending day without changing saved data", () => {
   const change = vi.fn(), close = vi.fn();
   render(<DatePicker value="2026-11-16" time="17:00" onChange={change} onClose={close} />);
-  fireEvent.click(screen.getByRole("button", { name: "上午 12:00 截止" }));
   fireEvent.keyDown(document, { key: "Escape" });
   expect(close).toHaveBeenCalledTimes(1); expect(change).not.toHaveBeenCalled();
 });
@@ -46,3 +45,5 @@ it("uses the allowed morning slot at the end of the valid window", () => {
   fireEvent.click(screen.getByRole("button", { name: "2026年11月23日" }));
   expect(change).toHaveBeenCalledWith("2026-11-23", "12:00");
 });
+
+it("commits even when the default afternoon and current day are clicked again",()=>{const change=vi.fn();render(<DatePicker value="2026-11-16" time="17:00" onChange={change} onClose={()=>{}}/>);fireEvent.click(screen.getByRole('button',{name:'下午 17:00 截止'}));fireEvent.click(screen.getByRole('button',{name:'2026年11月16日'}));expect(change).toHaveBeenCalledTimes(2);expect(change).toHaveBeenLastCalledWith('2026-11-16','17:00');});

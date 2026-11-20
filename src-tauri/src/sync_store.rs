@@ -48,6 +48,8 @@ pub struct MutationResult {
 pub struct SyncRequest {
     pub cursor: i64,
     pub mutations: Vec<Mutation>,
+    #[serde(rename = "petImageId")]
+    pub pet_image_id: String,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -192,23 +194,17 @@ impl Store {
             .collect())
     }
     fn sync_reconcile_completions(&self) -> Result<()> {
-        let conflicts: Vec<(String,String)> = self.conn.prepare("SELECT id,conflict FROM sync_rows WHERE conflict IS NOT NULL").map_err(err)?.query_map([], |r| Ok((r.get(0)?,r.get(1)?))).map_err(err)?.collect::<std::result::Result<_,_>>().map_err(err)?;
-        if conflicts.is_empty() { return Ok(()); }
-        let local = self.sync_local()?;
-        let mut settings = self.snapshot()?.settings;
-        let tx = self.conn.unchecked_transaction().map_err(err)?;
-        for (id, raw) in conflicts {
-            let result: MutationResult = serde_json::from_str(&raw).map_err(err)?;
-            if result.reason.as_deref() != Some("revision_changed") { continue; }
-            if let (Some(local), Some(remote)) = (local.get(&id), result.remote.as_ref()) {
-                if !remote.deleted && remote.task.as_ref().is_some_and(|cloud| completion_can_merge(local,cloud)) {
-                    apply_change(&tx,remote,&mut settings)?;
-                    tx.execute("UPDATE sync_rows SET revision=?1,baseline=?2,pending=NULL,conflict=NULL WHERE id=?3",params![remote.revision,encode(&remote.task)?,id]).map_err(err)?;
-                }
-            }
+        let rows:Vec<(String,String,Option<String>)>=self.conn.prepare("SELECT id,conflict,pending FROM sync_rows WHERE conflict IS NOT NULL").map_err(err)?.query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(err)?.collect::<std::result::Result<_,_>>().map_err(err)?;
+        for(id,raw,pending) in rows {
+            let conflict:MutationResult=serde_json::from_str(&raw).map_err(err)?;
+            if let Some(pending)=pending {
+                let mut mutation:Mutation=serde_json::from_str(&pending).map_err(err)?;
+                mutation.base_revision=conflict.remote.as_ref().map(|r|r.revision).unwrap_or(mutation.base_revision);
+                mutation.mutation_id=uuid::Uuid::new_v4().to_string();
+                self.conn.execute("UPDATE sync_rows SET pending=?1,conflict=NULL WHERE id=?2",params![encode(&mutation)?,id]).map_err(err)?;
+            } else { self.conn.execute("UPDATE sync_rows SET conflict=NULL WHERE id=?1",[id]).map_err(err)?; }
         }
-        tx.execute("UPDATE settings SET payload=?1 WHERE id=1",[encode(&settings)?]).map_err(err)?;
-        tx.commit().map_err(err)
+        Ok(())
     }
     fn sync_capture(&self) -> Result<()> {
         self.sync_initialize()?;
@@ -285,7 +281,8 @@ impl Store {
             size += length;
             mutations.push(mutation);
         }
-        Ok(SyncRequest { cursor, mutations })
+        let pet_image_id = self.conn.query_row("SELECT id FROM sync_pet LIMIT 1", [], |row| row.get(0)).optional().map_err(err)?.unwrap_or_default();
+        Ok(SyncRequest { cursor, mutations, pet_image_id })
     }
     pub fn sync_status(&self) -> Result<SyncStatus> {
         self.sync_capture()?;
@@ -333,6 +330,18 @@ impl Store {
                 .map(|raw| serde_json::from_str(raw).map_err(err))
                 .collect::<Result<_>>()?,
         })
+    }
+    pub fn sync_cache_pet(&mut self, id: &str, png: &str) -> Result<()> {
+        if !id.is_empty() && (uuid::Uuid::parse_str(id).is_err() || !png.starts_with("iVBORw0KGgo") || png.len() > 60_000
+            || !png.bytes().all(|byte| byte.is_ascii_alphanumeric() || [b'+', b'/', b'='].contains(&byte))) {
+            return Err("桌宠图片无效".into());
+        }
+        let tx = self.conn.transaction().map_err(err)?;
+        tx.execute("DELETE FROM sync_pet", []).map_err(err)?;
+        if !id.is_empty() {
+            tx.execute("INSERT INTO sync_pet(id,png) VALUES(?1,?2)", params![id, png]).map_err(err)?;
+        }
+        tx.commit().map_err(err)
     }
     pub fn sync_apply(&mut self, response: SyncResponse) -> Result<()> {
         self.ensure_workflows()?;
@@ -383,20 +392,9 @@ impl Store {
                 )
                 .map_err(err)?;
             } else if result.status == "conflict" {
-                if result.reason.as_deref() == Some("revision_changed") {
-                    if let (Some(local), Some(remote)) = (pending.task.as_ref(), result.remote.as_ref()) {
-                        if remote.task.as_ref().is_some_and(|cloud| completion_can_merge(local, cloud)) && !remote.deleted {
-                            apply_change(&tx, remote, &mut settings)?;
-                            tx.execute("UPDATE sync_rows SET revision=?1,baseline=?2,pending=NULL,conflict=NULL WHERE id=?3", params![remote.revision, encode(&remote.task)?, result.task_id]).map_err(err)?;
-                            continue;
-                        }
-                    }
-                }
-                tx.execute(
-                    "UPDATE sync_rows SET conflict=?1 WHERE id=?2",
-                    params![encode(&result)?, result.task_id],
-                )
-                .map_err(err)?;
+                pending.base_revision=result.remote.as_ref().map(|remote|remote.revision).unwrap_or(pending.base_revision);
+                pending.mutation_id=uuid::Uuid::new_v4().to_string();
+                tx.execute("UPDATE sync_rows SET revision=?1,pending=?2,conflict=NULL WHERE id=?3",params![pending.base_revision,encode(&pending)?,result.task_id]).map_err(err)?;
             }
         }
         let conflicts: Vec<(String, String)> = tx
@@ -514,14 +512,6 @@ impl Store {
         tx.commit().map_err(err)
     }
 }
-fn completion_can_merge(local: &SyncTask, remote: &SyncTask) -> bool {
-    let a = &local.task; let b = &remote.task;
-    a.status == "todo" && b.status == "completed" &&
-    (remote.follow_ups.is_none() || local.follow_ups == remote.follow_ups) &&
-    a.title == b.title && a.description == b.description && a.priority == b.priority &&
-    a.category == b.category && a.due_date == b.due_date && a.due_time == b.due_time &&
-    !a.activity_log.iter().any(|event| event.action == "reopened" && b.completed_at.as_ref().is_some_and(|at| event.at >= *at))
-}
 fn apply_change(
     tx: &rusqlite::Transaction<'_>,
     change: &Change,
@@ -581,6 +571,11 @@ fn apply_change(
         || !["high", "med", "low"].contains(&t.priority.as_str())
     {
         return Err("云端任务格式无效".into());
+    }
+    let old_deadline:Option<(Option<String>,Option<String>)>=tx.query_row("SELECT due_date,due_time FROM tasks WHERE id=?1",[&t.id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(err)?;
+    if old_deadline.is_some_and(|(date,time)| date!=t.due_date || time!=t.due_time) {
+        tx.execute("DELETE FROM snoozes WHERE task_id=?1",[&t.id]).map_err(err)?;
+        tx.execute("DELETE FROM deadline_delivered WHERE task_id=?1",[&t.id]).map_err(err)?;
     }
     tx.execute("INSERT INTO tasks(id,title,description,priority,status,due_date,due_time,created_at,updated_at,completed_at,started_at,category,activity_log) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,priority=excluded.priority,status=excluded.status,due_date=excluded.due_date,due_time=excluded.due_time,created_at=excluded.created_at,updated_at=excluded.updated_at,completed_at=excluded.completed_at,started_at=excluded.started_at,category=excluded.category,activity_log=excluded.activity_log",params![t.id,t.title,t.description,t.priority,t.status,t.due_date,t.due_time,t.created_at,t.updated_at,t.completed_at,t.started_at,t.category,encode(&t.activity_log)?]).map_err(err)?;
     if synced.in_progress && t.status == "todo" {

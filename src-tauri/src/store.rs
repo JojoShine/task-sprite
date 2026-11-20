@@ -1,5 +1,5 @@
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
@@ -115,6 +115,8 @@ pub struct Snapshot {
     pub platform: &'static str,
     #[serde(rename = "looksExpiresAt")]
     pub looks_expires_at: Option<String>,
+    #[serde(rename = "customPetPng")]
+    pub custom_pet_png: Option<String>,
     pub tasks: Vec<Task>,
     pub workflows: BTreeMap<String, TaskWorkflow>,
     pub settings: Settings,
@@ -194,6 +196,7 @@ impl Store {
             params![uuid::Uuid::new_v4().to_string(), Utc::now().to_rfc3339()],
         )
         .map_err(err)?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS sync_pet(id TEXT PRIMARY KEY,png TEXT NOT NULL);").map_err(err)?;
         tx.pragma_update(None, "user_version", 5).map_err(err)?;
         tx.commit().map_err(err)?;
         Ok(Self { conn })
@@ -258,6 +261,7 @@ impl Store {
             platform: std::env::consts::OS,
             workflows,
             looks_expires_at: self.looks_expires_at()?,
+            custom_pet_png: self.conn.query_row("SELECT png FROM sync_pet LIMIT 1", [], |row| row.get(0)).optional().map_err(err)?,
             tasks,
             settings,
         })
@@ -309,6 +313,10 @@ impl Store {
         };
         let tx = self.conn.transaction().map_err(err)?;
         tx.execute("INSERT INTO tasks(id,title,description,priority,status,due_date,created_at,updated_at,completed_at,due_time,started_at,category,activity_log) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,priority=excluded.priority,status=excluded.status,due_date=excluded.due_date,due_time=excluded.due_time,updated_at=excluded.updated_at,completed_at=excluded.completed_at,started_at=excluded.started_at,category=excluded.category,activity_log=excluded.activity_log",params![t.id,t.title,t.description,t.priority,t.status,t.due_date,t.created_at,t.updated_at,t.completed_at,t.due_time,t.started_at,t.category,serde_json::to_string(&t.activity_log).map_err(err)?]).map_err(err)?;
+        if old.is_some_and(|previous|previous.due_date!=t.due_date || previous.due_time!=t.due_time) {
+            tx.execute("DELETE FROM snoozes WHERE task_id=?1",[&t.id]).map_err(err)?;
+            tx.execute("DELETE FROM deadline_delivered WHERE task_id=?1",[&t.id]).map_err(err)?;
+        }
         tx.execute("INSERT OR IGNORE INTO task_workflows(task_id,state) VALUES(?1,'idle')", [&t.id]).map_err(err)?;
         if t.status == "completed" || old.is_some_and(|task| task.status != t.status) {
             tx.execute("UPDATE task_workflows SET state='idle' WHERE task_id=?1", [&t.id]).map_err(err)?;

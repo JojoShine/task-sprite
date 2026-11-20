@@ -7,6 +7,7 @@ import type { PetId, VisualState, Snapshot, Task } from "./types";
 import { groupTasks, isQuietTime, daysOverdue } from "./domain";
 import { api, message } from "./api";
 import { taskWorkflow } from "./workflow";
+import { isTaskOverdue } from "./deadlines";
 import { usePetMotion, type PetActivity } from "./usePetMotion";
 export const pets: {
   id: PetId;
@@ -22,12 +23,16 @@ export function Sprite({
   state = "idle",
   still = false,
   activity,
+  customPng,
 }: {
   pet: PetId;
   state?: VisualState;
   still?: boolean;
   activity?: PetActivity | null;
+  customPng?: string | null;
 }) {
+  if (customPng) return <span aria-hidden="true" className="sprite custom-pet-sprite"
+    style={{ backgroundImage: `url(data:image/png;base64,${customPng})` }} />;
   const look = plannedLooks.find(item => item.id === pet);
   const base = look && "pet" in look.preview ? look.preview.pet : pet;
   const frame = state === "working" ? "idle" : state === "interaction" ? "celebrate" : state;
@@ -179,7 +184,7 @@ export function Pet({
       }}
     >
       <div className="pet-card">
-      {pinned && reminded && <div className="pet-reminder-notice" role="alert"><span>到期提醒</span><button title={reminded.title} onClick={()=>void api.toggle()}>{reminded.title}</button></div>}
+      {pinned && reminded && <div className={`pet-reminder-notice ${isTaskOverdue(reminded)?"is-overdue":""}`} role="alert"><span>{isTaskOverdue(reminded)?"延期提醒":"到期提醒"}</span><button title={reminded.title} onClick={()=>void api.toggle()}>{reminded.title}</button></div>}
       {pinned && focus && (
         <div className="pet-current" role="group" aria-label="当前任务卡片" onWheel={event=>{
           const delta=event.deltaY || event.deltaX;
@@ -217,7 +222,7 @@ export function Pet({
             </nav>}
             </div>
           </div>
-          {overdue && <div className="pet-current-overdue">
+          {overdue && !reminderIds.includes(overdue.id) && <div className="pet-current-overdue">
             <button className="pet-overdue-open" title={overdue.title} aria-label={overdueText} onClick={() => void api.toggle()}>
               <span className="task-state-label is-overdue">逾期提醒</span>
               <span className="pet-overdue-title" aria-live="polite">{overdue.title}</span>
@@ -275,6 +280,7 @@ export function Pet({
         <Sprite
           key={motion.sequence}
           pet={renderedPet(s.pet, snapshot.looksExpiresAt)}
+          customPng={snapshot.customPetPng}
           state={state}
           activity={animation || state === "working" || state === "rest" ? null : motion.activity}
           still={s.reduceMotion || quiet}
