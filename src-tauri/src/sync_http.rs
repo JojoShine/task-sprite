@@ -15,6 +15,9 @@ use tauri::{Emitter, Manager};
 const BASE: &str = "http://127.0.0.1:3102/task-sprite";
 #[cfg(not(any(debug_assertions, feature = "local-sync")))]
 const BASE: &str = "https://tbtparent.me/task-sprite/api/task-sprite";
+fn pet_rotation_day() -> i64 {
+    (chrono::Utc::now().timestamp() + 8 * 3600).div_euclid(86_400)
+}
 pub struct SyncRuntime(pub AtomicBool);
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 pub static PENDING: AtomicBool = AtomicBool::new(true);
@@ -217,6 +220,7 @@ struct SyncEnvelope {
 struct CloudPetImage {
     id: String,
     png: String,
+    poses: Option<crate::sync_store::PetPoses>,
 }
 
 pub fn synchronize(app: &tauri::AppHandle) -> Result<SyncStatus> {
@@ -273,7 +277,7 @@ pub fn synchronize(app: &tauri::AppHandle) -> Result<SyncStatus> {
                 return store.sync_status();
             }
             if let Some(image) = response.pet_image {
-                store.sync_cache_pet(&image.id, &image.png)?;
+                store.sync_cache_pet(&image.id, &image.png, image.poses)?;
             }
             store.sync_apply(response.tasks)?;
             let snapshot = store.snapshot()?;
@@ -356,6 +360,7 @@ pub fn start_workers(app: tauri::AppHandle) {
         let mut retry = 1;
         let mut reconnect = true;
         let mut observed = 0;
+        let mut pet_day = pet_rotation_day();
         let mut observed_generation = GENERATION.load(Ordering::Acquire);
         loop {
             let result = (|| -> Result<()> {
@@ -365,7 +370,12 @@ pub fn start_workers(app: tauri::AppHandle) {
                 if !initial.enabled { reconnect = true; observed = 0; std::thread::sleep(Duration::from_secs(1)); return Ok(()); }
                 let credential = with_admission(&WAIT_ADMISSION, || status(&app).map(|s| s.enabled && s.account_id == initial.account_id && GENERATION.load(Ordering::Acquire) == generation).unwrap_or(false), sync_credentials::read)?.ok_or("同步凭据暂不可用")?;
                 if initial.account_id.as_deref() != Some(&credential.account) { return Err("同步工作空间不一致".into()); }
-                if reconnect { signal(); reconnect = false; }
+                let today = pet_rotation_day();
+                if reconnect || pet_day != today {
+                    pet_day = today;
+                    signal();
+                    reconnect = false;
+                }
                 let cursor = { let state = app.state::<AppState>(); let store = state.0.lock().map_err(|_| "数据库暂不可用")?; store.sync_request()?.cursor.max(observed) };
                 let notice: ChangeNotice = admitted_request(&app, generation, "/changes/wait", &credential, &serde_json::json!({"cursor": cursor}))?;
                 let current = status(&app)?;

@@ -1181,3 +1181,17 @@ fn panel_height_follows_content_and_keeps_its_anchor_inside_the_screen() {
     assert_eq!(fitted_panel(original,100.,area,false).h,260.);
     assert_eq!(fitted_panel(original,1200.,area,false).h,740.);
 }
+
+#[test]
+fn custom_pet_pose_cache_replaces_and_clears_poses_with_the_base_image() {
+    let mut store = Store::memory().unwrap();
+    let asset = uuid::Uuid::new_v4().to_string();
+    store.sync_cache_pet(&asset, "iVBORw0KGgoBASE", None).unwrap();
+    assert!(store.snapshot().unwrap().custom_pet_poses.is_none());
+    let poses = std::collections::BTreeMap::from([("rest".to_owned(), "iVBORw0KGgoREST".to_owned())]);
+    store.sync_cache_pet(&asset, "iVBORw0KGgoBASE", Some(poses.clone())).unwrap();
+    assert_eq!(store.snapshot().unwrap().custom_pet_poses, Some(poses));
+    store.sync_cache_pet("", "", None).unwrap();
+    let snapshot = store.snapshot().unwrap();
+    assert!(snapshot.custom_pet_png.is_none() && snapshot.custom_pet_poses.is_none());
+}

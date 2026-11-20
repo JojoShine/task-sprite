@@ -172,6 +172,30 @@ it("opens the wardrobe from settings and returns through settings to the task li
   expect(screen.getByRole("button", {name:"记下第一件事"})).toBeTruthy();
 });
 
+it("fits the wardrobe to the visible cards and shrinks on its short page", () => {
+  let measureWardrobe: (() => void) | undefined;
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(private measure: () => void) {}
+    observe(node: Element) {
+      if (node.classList.contains("wardrobe")) measureWardrobe = this.measure;
+    }
+    disconnect() {}
+  });
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function(this: HTMLElement) {
+    return this.classList.contains("panel-content") ? window.innerHeight - 120 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function(this: HTMLElement) {
+    return this.classList.contains("wardrobe") ? 140 + 55 * this.querySelectorAll(".look-tile").length : 0;
+  });
+  render(<TaskPanel snapshot={snapshot} onSnapshot={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "设置" }));
+  fireEvent.click(screen.getByRole("button", { name: "更多装扮" }));
+  expect(api.resizePanel).toHaveBeenLastCalledWith(480);
+  fireEvent.click(screen.getByRole("button", { name: "下一页装扮" }));
+  measureWardrobe?.();
+  expect(api.resizePanel).toHaveBeenLastCalledWith(370);
+});
+
 it("keeps the free task panel and settings free of payment entries", () => {
   render(<TaskPanel snapshot={snapshot} onSnapshot={() => {}} />);
   expect(screen.queryByRole("button", {name:"年卡与云服务"})).toBeNull();

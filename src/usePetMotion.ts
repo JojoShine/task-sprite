@@ -11,10 +11,12 @@ export function usePetMotion({
   blocked,
   reduced,
   pet,
+  ambient = true,
 }: {
   blocked: boolean;
   reduced: boolean;
   pet: PetId;
+  ambient?: boolean;
 }) {
   const [activity, setActivity] = useState<PetActivity | null>(null);
   const [caption, setCaption] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export function usePetMotion({
       clearTimeout(endTimer);
     };
     const schedule = () => {
-      if (paused || !alive) return;
+      if (!ambient || paused || !alive) return;
       idleTimer = setTimeout(
         () => {
           const choices = activities.filter((a) => a !== last.current);
@@ -70,10 +72,12 @@ export function usePetMotion({
     schedule();
     interaction.current = () => {
       clear();
-      const choices = captions.filter((c) => c !== lastCaption.current);
-      const text = choices[Math.floor(Math.random() * choices.length)];
-      lastCaption.current = text;
-      setCaption(text);
+      if (ambient) {
+        const choices = captions.filter((c) => c !== lastCaption.current);
+        const text = choices[Math.floor(Math.random() * choices.length)];
+        lastCaption.current = text;
+        setCaption(text);
+      }
       if (!paused) {
         setActivity("tap");
         setSequence((v) => v + 1);
@@ -90,7 +94,7 @@ export function usePetMotion({
       clear();
       interaction.current = () => {};
     };
-  }, [blocked, reduced, systemReduced, hidden, pet]);
+  }, [ambient, blocked, reduced, systemReduced, hidden, pet]);
   const interact = useCallback(() => interaction.current(), []);
   return { activity, caption, sequence, interact };
 }

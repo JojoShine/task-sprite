@@ -441,10 +441,14 @@ h3 {
   flex-shrink: 0;
   pointer-events: none;
 }
-.sprite.custom-pet-sprite {
-  background-size: contain;
-  background-position: center bottom;
-  animation: none;
+.custom-pet-sprite {
+  display: inline-block;
+  width: 132px;
+  height: 160px;
+  object-fit: contain;
+  object-position: center bottom;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 .sprite.still {
   animation: none;

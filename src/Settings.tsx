@@ -46,6 +46,8 @@ export function Settings({
   onWardrobe,
   section,
   updater,
+  customPet,
+  customActions,
 }: {
   settings: Preferences;
   onClose: () => void;
@@ -53,6 +55,8 @@ export function Settings({
   onWardrobe?: () => void;
   section?: "reminders";
   updater?: AppUpdater;
+  customPet?: boolean;
+  customActions?: boolean;
 }) {
   const reminders = useRef<HTMLElement>(null);
   useEffect(() => { if(section === "reminders") reminders.current?.scrollIntoView?.({block:"start"}); }, [section]);
@@ -182,7 +186,7 @@ export function Settings({
         <label className="toggle">固定任务卡<input type="checkbox" checked={draft.cardPinned ?? false} disabled={busy} onChange={e=>void update({cardPinned:e.target.checked})}/></label>
         <p className="micro">只固定机器人上方的小卡片，任务窗口打开或关闭都不影响它；关闭此开关即可收起小卡片。</p>
       </section>
-      <CompanionSettings settings={settings} onChange={onChange} onWardrobe={onWardrobe}/>
+      <CompanionSettings settings={settings} customPet={customPet} customActions={customActions} onChange={onChange} onWardrobe={onWardrobe}/>
       <fieldset className="theme-field">
         <legend>外观</legend>
         <div role="radiogroup" aria-label="外观主题" className="theme-options">

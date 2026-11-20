@@ -74,3 +74,11 @@ it("reads the system login setting and only enables it after the user toggles it
   expect(api.setAutostart).toHaveBeenLastCalledWith(false);
   expect(update).not.toHaveBeenCalled();
 });
+
+it("keeps built-in pet options unselected while a cloud pet is displayed", () => {
+  const { rerender } = render(<Settings settings={preferences} customPet onClose={vi.fn()} onChange={vi.fn()}/>);
+  expect(screen.getByRole("button", { name: "选择机器人" }).getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByText("正在使用自定义桌宠，在小程序中更换形象。")).toBeTruthy();
+  rerender(<Settings settings={preferences} onClose={vi.fn()} onChange={vi.fn()}/>);
+  expect(screen.getByRole("button", { name: "选择机器人" }).getAttribute("aria-pressed")).toBe("true");
+});

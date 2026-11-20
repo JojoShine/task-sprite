@@ -117,6 +117,8 @@ pub struct Snapshot {
     pub looks_expires_at: Option<String>,
     #[serde(rename = "customPetPng")]
     pub custom_pet_png: Option<String>,
+    #[serde(rename = "customPetPoses", skip_serializing_if = "Option::is_none")]
+    pub custom_pet_poses: Option<crate::sync_store::PetPoses>,
     pub tasks: Vec<Task>,
     pub workflows: BTreeMap<String, TaskWorkflow>,
     pub settings: Settings,
@@ -196,7 +198,7 @@ impl Store {
             params![uuid::Uuid::new_v4().to_string(), Utc::now().to_rfc3339()],
         )
         .map_err(err)?;
-        tx.execute_batch("CREATE TABLE IF NOT EXISTS sync_pet(id TEXT PRIMARY KEY,png TEXT NOT NULL);").map_err(err)?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS sync_pet(id TEXT PRIMARY KEY,png TEXT NOT NULL); CREATE TABLE IF NOT EXISTS sync_pet_poses(id TEXT PRIMARY KEY,payload TEXT NOT NULL);").map_err(err)?;
         tx.pragma_update(None, "user_version", 5).map_err(err)?;
         tx.commit().map_err(err)?;
         Ok(Self { conn })
@@ -262,6 +264,8 @@ impl Store {
             workflows,
             looks_expires_at: self.looks_expires_at()?,
             custom_pet_png: self.conn.query_row("SELECT png FROM sync_pet LIMIT 1", [], |row| row.get(0)).optional().map_err(err)?,
+            custom_pet_poses: self.conn.query_row("SELECT payload FROM sync_pet_poses LIMIT 1", [], |row| row.get::<_, String>(0))
+                .optional().map_err(err)?.map(|raw| serde_json::from_str(&raw).map_err(err)).transpose()?,
             tasks,
             settings,
         })

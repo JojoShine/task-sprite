@@ -4,8 +4,9 @@ import { plannedLooks, interfaceSkins, hasLicensedLooks } from "./looks";
 import { LookPreview } from "./LookPreview";
 import { api, message } from "./api";
 import type { PetId, SkinId, Settings, Snapshot } from "./types";
-export function Wardrobe({ settings, looksExpiresAt, onActivate, onChange, onClose }: {
+export function Wardrobe({ settings, looksExpiresAt, onActivate, onChange, onClose, customPet }: {
   settings: Settings;
+  customPet?: boolean;
   looksExpiresAt?: string | null;
   onActivate?: () => void;
   onChange: (next: Snapshot) => void;
@@ -24,6 +25,8 @@ export function Wardrobe({ settings, looksExpiresAt, onActivate, onChange, onClo
   }
   const items = category === "pets" ? plannedLooks : interfaceSkins;
   const pageCount = Math.ceil(items.length / 4);
+  const selected = (item: (typeof items)[number]) =>
+    item.kind === "皮肤" ? settings.skin === item.id : !customPet && settings.pet === item.id;
   return <section className="wardrobe" aria-label="精灵衣橱">
     <div className="section-heading"><h2>精灵衣橱</h2><button className="text-button icon-text" aria-label="返回设置" onClick={onClose}><ArrowLeft size={16} />返回</button></div>
     <p className="wardrobe-intro">六位专属精灵与四款整体皮肤独立选择，可自由搭配。免费伙伴在设置中切换。</p>
@@ -32,13 +35,13 @@ export function Wardrobe({ settings, looksExpiresAt, onActivate, onChange, onClo
       <button aria-pressed={category === "skins"} onClick={() => { setCategory("skins"); setPage(0); setError(""); }}>界面皮肤 {interfaceSkins.length}</button>
     </div>
     <div className="look-grid">
-      {items.slice(page * 4, page * 4 + 4).map(item => <button className={`look-tile ${(item.kind === "皮肤" ? settings.skin === item.id : settings.pet === item.id) ? "selected" : ""}`} key={item.id} aria-label={`${item.kind === "皮肤" ? "选择皮肤" : "选择装扮"} ${item.name}`} aria-pressed={(item.kind === "皮肤" ? settings.skin === item.id : settings.pet === item.id)} disabled={busy} onClick={() => unlocked ? void selectLook(item.kind === "皮肤" ? { skin: item.id as SkinId } : { pet: item.id }) : onActivate?.()}>
-        {(item.kind === "皮肤" ? settings.skin === item.id : settings.pet === item.id) && <Check size={14} className="look-check" />}<LookPreview look={item} still={settings.reduceMotion} /><strong>{item.name}</strong><small>{item.kind} · {unlocked ? (item.kind === "皮肤" ? settings.skin === item.id : settings.pet === item.id) ? "已选择" : "已解锁" : "需激活"}</small>
+      {items.slice(page * 4, page * 4 + 4).map(item => <button className={`look-tile ${selected(item) ? "selected" : ""}`} key={item.id} aria-label={`${item.kind === "皮肤" ? "选择皮肤" : "选择装扮"} ${item.name}`} aria-pressed={selected(item)} disabled={busy || (customPet && item.kind !== "皮肤")} onClick={() => unlocked ? void selectLook(item.kind === "皮肤" ? { skin: item.id as SkinId } : { pet: item.id }) : onActivate?.()}>
+        {selected(item) && <Check size={14} className="look-check" />}<LookPreview look={item} still={settings.reduceMotion} /><strong>{item.name}</strong><small>{item.kind} · {unlocked ? selected(item) ? "已选择" : "已解锁" : "需激活"}</small>
       </button>)}
     </div>
     {pageCount > 1 && <nav className="task-pager look-pager" aria-label="装扮翻页"><button aria-label="上一页装扮" disabled={page === 0} onClick={() => setPage(page - 1)}><CaretLeft size={19} /></button><span>{page + 1} / {pageCount}</span><button aria-label="下一页装扮" disabled={page === pageCount - 1} onClick={() => setPage(page + 1)}><CaretRight size={19} /></button></nav>}
     {category === "skins" && settings.skin && settings.skin !== "default" && <button className="text-button" disabled={busy} onClick={() => void selectLook({ skin: "default" })}>恢复默认皮肤</button>}
     {error && <p className="error" role="alert">{error}</p>}
-    <p className="wardrobe-note">有效授权支持离线装扮；暂停同步不会锁定。</p>
+    <p className="wardrobe-note">{customPet ? "正在使用自定义桌宠，可在小程序中切换角色。" : "有效授权支持离线装扮；暂停同步不会锁定。"}</p>
   </section>;
 }

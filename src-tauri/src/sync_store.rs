@@ -91,6 +91,13 @@ pub fn device_name(installation: &str) -> String {
     let number = u32::from_str_radix(compact.get(..8).unwrap_or("0"),16).unwrap_or(0) % 10000;
     format!("{} · {number:04}", if cfg!(target_os="windows") { "Windows" } else { "Mac" })
 }
+pub type PetPoses = BTreeMap<String, String>;
+
+fn valid_pet_png(png: &str) -> bool {
+    png.starts_with("iVBORw0KGgo") && png.len() <= 60_000 &&
+        png.bytes().all(|byte| byte.is_ascii_alphanumeric() || [b'+', b'/', b'='].contains(&byte))
+}
+
 fn encode(value: &impl Serialize) -> Result<String> {
     serde_json::to_string(value).map_err(err)
 }
@@ -331,15 +338,21 @@ impl Store {
                 .collect::<Result<_>>()?,
         })
     }
-    pub fn sync_cache_pet(&mut self, id: &str, png: &str) -> Result<()> {
-        if !id.is_empty() && (uuid::Uuid::parse_str(id).is_err() || !png.starts_with("iVBORw0KGgo") || png.len() > 60_000
-            || !png.bytes().all(|byte| byte.is_ascii_alphanumeric() || [b'+', b'/', b'='].contains(&byte))) {
+    pub fn sync_cache_pet(&mut self, id: &str, png: &str, poses: Option<PetPoses>) -> Result<()> {
+        if !id.is_empty() && (uuid::Uuid::parse_str(id).is_err() || !valid_pet_png(png)) {
             return Err("桌宠图片无效".into());
         }
+        let poses = poses.filter(|poses| !poses.is_empty() && poses.iter().all(|(name, png)| {
+            ["working", "reminder", "celebrate", "rest"].contains(&name.as_str()) && valid_pet_png(png)
+        }));
         let tx = self.conn.transaction().map_err(err)?;
         tx.execute("DELETE FROM sync_pet", []).map_err(err)?;
+        tx.execute("DELETE FROM sync_pet_poses", []).map_err(err)?;
         if !id.is_empty() {
             tx.execute("INSERT INTO sync_pet(id,png) VALUES(?1,?2)", params![id, png]).map_err(err)?;
+            if let Some(poses) = poses {
+                tx.execute("INSERT INTO sync_pet_poses(id,payload) VALUES(?1,?2)", params![id, encode(&poses)?]).map_err(err)?;
+            }
         }
         tx.commit().map_err(err)
     }

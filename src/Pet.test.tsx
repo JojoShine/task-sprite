@@ -594,3 +594,15 @@ it('keeps drag failures out of the desktop overlay and allows another drag',asyn
  expect(api.toggle).not.toHaveBeenCalled();
  vi.unstubAllGlobals();
 });
+
+it("keeps a custom photo out of every built-in animation and uses only generated poses", () => {
+  const { container, rerender } = render(<Sprite pet="cat" state="interaction" customPng="base" />);
+  const picture = container.querySelector("img")!;
+  expect(picture.getAttribute("src")).toBe("data:image/png;base64,base");
+  expect(picture.classList.contains("sprite")).toBe(false);
+  expect(container.querySelector(".pose-prop")).toBeNull();
+  rerender(<Sprite pet="cat" state="celebrate" customPng="base" customPoses={{ celebrate: "happy" }}/>);
+  expect(picture.getAttribute("src")).toBe("data:image/png;base64,happy");
+  rerender(<Sprite pet="cat" state="rest" customPng="base" customPoses={{ celebrate: "happy" }}/>);
+  expect(picture.getAttribute("src")).toBe("data:image/png;base64,base");
+});

@@ -91,15 +91,15 @@ export function TaskPanel({
       requestedHeight.current = next;
       if (api.resizePanel) void api.resizePanel(next).catch(() => { requestedHeight.current = 0; });
     };
-    if (view === "editor" && !editing) {
-      const editor=shell.current?.querySelector<HTMLElement>('.editor');
+    if (view === "wardrobe" || (view === "editor" && !editing)) {
+      const content = shell.current?.querySelector<HTMLElement>(view === "wardrobe" ? ".wardrobe" : ".editor");
       const area=shell.current?.querySelector<HTMLElement>('.panel-content');
-      if(!editor||!area||typeof ResizeObserver==="undefined")return;
+      if (!content || !area || typeof ResizeObserver === "undefined") return;
       const measure=()=>{
         const padding=getComputedStyle(area);
-        resize(window.innerHeight-area.clientHeight+editor.scrollHeight+parseFloat(padding.paddingTop)+parseFloat(padding.paddingBottom));
+        resize(window.innerHeight-area.clientHeight+content.scrollHeight+(parseFloat(padding.paddingTop)||0)+(parseFloat(padding.paddingBottom)||0));
       };
-      const observer=new ResizeObserver(measure);observer.observe(editor);measure();
+      const observer=new ResizeObserver(measure);observer.observe(content);measure();
       return ()=>observer.disconnect();
     }
     if (view !== "tasks") { resize(heightLimit); return; }
@@ -301,7 +301,7 @@ export function TaskPanel({
         </header>
         {pinError && <p className="pin-error" role="alert">{pinError}</p>}
         <div className={`panel-content ${view === "editor" && !editing ? "editor-view" : ""} ${view === "tasks" && listed.length === 0 ? "empty-view" : view === "tasks" ? "paged-view" : ""} ${notificationWarning ? "has-notice" : ""}`}>
-          {view === "wardrobe" ? <Wardrobe looksExpiresAt={snapshot.looksExpiresAt} onActivate={() => setView("settings")} settings={snapshot.settings} onChange={onSnapshot} onClose={() => setView("settings")} /> : view === "editor" ? (
+          {view === "wardrobe" ? <Wardrobe customPet={Boolean(snapshot.customPetPng)} looksExpiresAt={snapshot.looksExpiresAt} onActivate={() => setView("settings")} settings={snapshot.settings} onChange={onSnapshot} onClose={() => setView("settings")} /> : view === "editor" ? (
             <TaskEditor
               key={editing?.id ?? "new"}
               task={editing}
@@ -318,6 +318,8 @@ export function TaskPanel({
             <Settings
               settings={snapshot.settings}
               updater={updater}
+              customPet={Boolean(snapshot.customPetPng)}
+              customActions={Boolean(snapshot.customPetPoses)}
               onWardrobe={() => setView("wardrobe")}
               onClose={() => setView("tasks")}
               onChange={onSnapshot}

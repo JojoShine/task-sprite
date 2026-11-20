@@ -49,7 +49,10 @@ export interface Settings {
 export type ExecutionState = "idle" | "working" | "waiting";
 export interface TaskStep { id: string; content: string; createdAt: string; }
 export interface TaskWorkflow { state: ExecutionState; steps: TaskStep[]; }
+export type PetPoses = Partial<Record<"working" | "reminder" | "celebrate" | "rest", string>>;
+
 export interface Snapshot {
+  customPetPoses?: PetPoses | null;
   customPetPng?: string | null;
   platform?: string;
   workflows?: Record<string, TaskWorkflow>;

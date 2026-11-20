@@ -3,7 +3,7 @@ import { Check, Play, Pause, Hourglass, CaretLeft, CaretRight } from "@phosphor-
 import { plannedLooks, renderedPet } from "./looks";
 import { TaskBubble } from "./TaskBubble";
 import { createDragSession } from "./drag";
-import type { PetId, VisualState, Snapshot, Task } from "./types";
+import type { PetId, VisualState, Snapshot, Task, PetPoses } from "./types";
 import { groupTasks, isQuietTime, daysOverdue } from "./domain";
 import { api, message } from "./api";
 import { taskWorkflow } from "./workflow";
@@ -24,15 +24,21 @@ export function Sprite({
   still = false,
   activity,
   customPng,
+  customPoses,
 }: {
   pet: PetId;
   state?: VisualState;
   still?: boolean;
   activity?: PetActivity | null;
   customPng?: string | null;
+  customPoses?: PetPoses | null;
 }) {
-  if (customPng) return <span aria-hidden="true" className="sprite custom-pet-sprite"
-    style={{ backgroundImage: `url(data:image/png;base64,${customPng})` }} />;
+  if (customPng) {
+    const pose = state === "interaction" ? "celebrate" : state;
+    const image = pose !== "idle" ? customPoses?.[pose] || customPng : customPng;
+    return <img aria-hidden="true" alt="" draggable={false} className="custom-pet-sprite"
+      src={`data:image/png;base64,${image}`} />;
+  }
   const look = plannedLooks.find(item => item.id === pet);
   const base = look && "pet" in look.preview ? look.preview.pet : pet;
   const frame = state === "working" ? "idle" : state === "interaction" ? "celebrate" : state;
@@ -159,7 +165,8 @@ export function Pet({
   const quiet = isQuietTime(s.quietStart, s.quietEnd);
   const motion = usePetMotion({
     blocked: Boolean(animation) || quiet,
-    reduced: s.reduceMotion,
+    reduced: s.reduceMotion || Boolean(snapshot.customPetPng && !snapshot.customPetPoses),
+    ambient: !snapshot.customPetPng,
     pet: renderedPet(s.pet, snapshot.looksExpiresAt),
   });
   const pose: Record<PetActivity, VisualState> = {
@@ -278,9 +285,10 @@ export function Pet({
         }}
       >
         <Sprite
-          key={motion.sequence}
+          key={snapshot.customPetPng ? "custom" : motion.sequence}
           pet={renderedPet(s.pet, snapshot.looksExpiresAt)}
           customPng={snapshot.customPetPng}
+          customPoses={s.reduceMotion ? null : snapshot.customPetPoses}
           state={state}
           activity={animation || state === "working" || state === "rest" ? null : motion.activity}
           still={s.reduceMotion || quiet}
